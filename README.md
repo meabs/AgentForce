@@ -54,9 +54,9 @@ An RTS-style agent management board in the AgentCraft mould (roster top-left, mi
 | **Mission Status** | Right | Objective, an amber progress bar starting at 62% and an objectives checklist |
 | **System Resources** | Right | Fluctuating CPU / MEM / NET bars, fleet power and intel points |
 | **Notice Board** | Right | Live uplink card, alerts and the authority badge |
-| **Command Bar** | Bottom | Selected unit HP and **SUMMON AGENT · ASSIGN MISSION · HOLD · RETREAT · APPROVE PLAN** |
+| **Command Bar** | Bottom | Selected unit box (click to open the cockpit) and **SUMMON AGENT · ASSIGN MISSION · HOLD/RESUME · RETREAT · APPROVE PLAN** |
 
-**Controls:** click a roster card or a ship to select it, or press `1`–`4`. The command buttons are **stubs** for now. They show an `ACK` toast and don't send any orders yet.
+**Controls:** click a roster card, a map ship or its floating label to open that unit's **cockpit** (details in the next section). Press `1`–`9` to select a unit; if a cockpit is open, it switches to that unit. The command bar buttons act on the **selected** unit.
 
 Over all of it sits a CRT scanline layer with a faint flicker, plus notched panels with cyan/amber corner brackets.
 
@@ -67,9 +67,46 @@ Over all of it sits a CRT scanline layer with a faint flicker, plus notched pane
 | **CURSOR-7** | Live cloud agent (see below) | Whatever the uplink says |
 | **CODEX-3** | Data Harvest | Simulated: RUNNING / IDLE |
 | **CLAUDE-PRIME** | Fleet Coordination | Simulated: IDLE / RUNNING |
-| **SCOUT-9** | Perimeter Sweep | Simulated: mostly BLOCKED (someone get it its credentials) |
+| **SCOUT-9** | Perimeter Sweep | Simulated: mostly BLOCKED until you **APPROVE PLAN** |
 
 The simulated units cycle activity lines and status via `src/hooks/useActivityTicker.ts`. Their data lives in `src/data/mockAgents.ts`.
+
+## 🎮 COCKPIT: TAKE THE STICK
+
+![Cockpit slide-over: unit stats, live tool-call terminal and controls](./demo-screenshot-cockpit.png)
+
+<sub>▲ **COCKPIT ONLINE.** One click on a unit and its flight deck slides in: stats up top, a streaming terminal in the middle, orders at your fingertips.</sub>
+
+```
+MISSION BRIEFING: COCKPIT ACCESS       CLEARANCE: ECHO-7
+
+Commander,
+
+Watching from orbit is no longer enough. Each unit now has a cockpit.
+Climb in, read its terminal as it streams, and issue orders directly:
+HOLD it, RESUME it, ASSIGN a new mission, call a RETREAT, APPROVE the
+plan, or SUMMON reinforcements. Your hands never need to leave the keys.
+
+Fly safe. The fleet is listening.
+
+                                        FLEET COMMAND AUTHORITY
+```
+
+Select any unit to open its cockpit, which slides in from the right. It shows:
+- The unit's name, status pill, HOLD/RTB and LIVE badges, mission, current activity, and progress / HP / token bars.
+- A **live terminal**: a streaming tool-call log. Lines type themselves out, prompts are coloured by status (green RUNNING, amber IDLE, red BLOCKED, grey HOLD), and the view auto-scrolls. Scroll up to read history, then press **▼ LIVE** to jump back. Mock units replay plausible transcripts (`rg`, `read_file`, `edit`, `vitest`, `vault read`…). CURSOR-7 instead streams real **uplink lines** from `cursor-live.json` (state, mission, summary, poll heartbeat), and the cockpit shows an **OPEN AGENT ↗** button.
+- A **console input** (`cmdr@bridge:~$`) with ↑/↓ history. Commands: `help`, `status`, `hold`, `resume`, `approve`, `retreat`, `assign <mission>`, `clear`. Anything else gets a simulated reply from mock units. For CURSOR-7 the console explains that it can't message the cloud agent and points you to its page.
+
+| Order | Effect (in-demo) | Key |
+|---|---|---|
+| **HOLD / RESUME** | Freezes that unit's simulated ticker: activity, status, position, feed lines and terminal all pause. RESUME re-engages it. | `H` / `Space` |
+| **ASSIGN MISSION** | Opens a quick-pick of 9 missions plus a custom field, and updates the mission on the card, map label and cockpit | `A` |
+| **RETREAT** | Parks the unit at the rally point: status → IDLE, RTB badge, ticker paused, warning log line. RESUME redeploys it. | `R` |
+| **APPROVE PLAN** | ACK toast, green log line, unit progress +15% and mission progress +3%. A BLOCKED unit gets unblocked and moves to RUNNING. | `P` |
+| **SUMMON AGENT** | Warps in a new mock unit (PROBE-11, VECTOR-2, RELAY-4…), then selects it and opens its cockpit | `S` |
+| **Open / close** | `Enter` opens the selected unit's cockpit. `Esc` closes the mission picker first, then the cockpit. ✕ also closes it. | `Enter` / `Esc` |
+
+Every order adds a line to the unit's terminal and to the activity feed. All orders are **local to the board**: on CURSOR-7 they change only what the board shows, never the real cloud agent (the terminal says so).
 
 ## 📡 LIVE UPLINK: CURSOR-7
 
@@ -153,12 +190,15 @@ Vite ignores `.cursor-bridge/` and `public/cursor-live.json`, so status updates 
 
 ```
 src/
-  App.tsx                     layout + live CURSOR-7 merge
+  App.tsx                     layout, live CURSOR-7 merge, commander orders + keys
   components/                 MissionBanner, AgentList, ActivityFeed, Map, Minimap,
-                              MissionStatus, ResourcePanel, NoticeBoard, CommandBar
+                              MissionStatus, ResourcePanel, NoticeBoard, CommandBar,
+                              Cockpit, Terminal
   hooks/useActivityTicker.ts  simulated fleet chatter
   hooks/useCursorLive.ts      polls /cursor-live.json + state mapping
+  hooks/useTerminalLogs.ts    per-unit streaming terminal transcripts
   data/mockAgents.ts          mock units, activity lines, feed events
+  data/terminalScripts.ts     fake tool-call scripts + mission quick-picks
 plugins/cursorLiveApi.ts      Vite middleware: GET/POST /api/cursor-live
 scripts/
   write-cursor-status.mjs     cursor:push / cursor:status

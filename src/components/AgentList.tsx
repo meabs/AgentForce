@@ -15,6 +15,7 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
 
 export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
   const running = agents.filter((a) => a.status === 'RUNNING').length;
+  const idle = agents.filter((a) => a.status === 'IDLE').length;
   return (
     <aside className="agent-list hud-panel" aria-label="Agent roster">
       <div className="hud-panel__header">
@@ -23,7 +24,7 @@ export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
           <div className="agent-list__tabs">
             <span>ALL ({agents.length})</span>
             <span className="is-active">WORKING ({running})</span>
-            <span>IDLE</span>
+            <span>IDLE ({idle})</span>
           </div>
         </div>
         <span className="hud-panel__meta">LIVE</span>
@@ -35,7 +36,7 @@ export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
             <li key={agent.id}>
               <button
                 type="button"
-                className={`agent-card agent-card--${agent.status.toLowerCase()}${active ? ' agent-card--selected' : ''}`}
+                className={`agent-card agent-card--${agent.status.toLowerCase()}${agent.held ? ' agent-card--held' : ''}${active ? ' agent-card--selected' : ''}`}
                 onClick={() => onSelect(agent.id)}
               >
                 <div className="agent-card__glyph" aria-hidden>
@@ -44,8 +45,11 @@ export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
                 <div className="agent-card__body">
                   <div className="agent-card__top">
                     <span className="agent-card__name">{agent.name}</span>
-                    <span className={`agent-status agent-status--${agent.status.toLowerCase()}`}>
-                      {STATUS_LABEL[agent.status]}
+                    <span className="agent-card__pills">
+                      {agent.held && <span className="agent-hold">{agent.retreated ? 'RTB' : 'HOLD'}</span>}
+                      <span className={`agent-status agent-status--${agent.status.toLowerCase()}`}>
+                        {STATUS_LABEL[agent.status]}
+                      </span>
                     </span>
                   </div>
                   <div className="agent-card__meta-row">

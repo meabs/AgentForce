@@ -92,7 +92,7 @@ export function Map({ agents, selectedId, onSelect }: MapProps) {
             <button
               key={agent.id}
               type="button"
-              className={`unit-marker unit-marker--${agent.status.toLowerCase()}${selected ? ' unit-marker--selected' : ''}`}
+              className={`unit-marker unit-marker--${agent.status.toLowerCase()}${agent.held ? ' unit-marker--held' : ''}${selected ? ' unit-marker--selected' : ''}`}
               style={{ left: `${p.left}%`, top: `${p.top}%` }}
               onClick={() => onSelect(agent.id)}
               aria-label={`${agent.name}, ${agent.status}`}
@@ -103,7 +103,7 @@ export function Map({ agents, selectedId, onSelect }: MapProps) {
               <span className="unit-label">
                 <span className="unit-label__name">{agent.name}</span>
                 <span className="unit-label__status">
-                  {agent.status} · {agent.progress}%
+                  {agent.status}{agent.held ? (agent.retreated ? ' · RTB' : ' · HOLD') : ''} · {agent.progress}%
                 </span>
                 <span className="unit-label__activity">{agent.activity}</span>
               </span>

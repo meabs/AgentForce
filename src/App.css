@@ -145,3 +145,6 @@
   from { opacity: 0; transform: translate(-50%, 6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+.cmd-toast--green { border-color: #3dff9a; color: #3dff9a; background: rgba(0, 30, 18, 0.94); box-shadow: 0 0 20px rgba(61, 255, 154, 0.35); }
+.cmd-toast--red { border-color: #e04060; color: #ff8aa0; background: rgba(36, 0, 8, 0.94); box-shadow: 0 0 20px rgba(224, 64, 96, 0.35); }

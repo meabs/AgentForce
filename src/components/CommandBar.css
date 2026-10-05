@@ -168,3 +168,48 @@
   color: var(--amber);
   text-decoration: underline;
 }
+
+.command-bar__unit--clickable {
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.command-bar__unit--clickable:hover {
+  border-color: rgba(0, 229, 255, 0.6);
+}
+.command-bar__unit .command-bar__unit-mission {
+  display: block;
+  grid-column: 1 / 3;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  color: rgba(255, 180, 40, 0.75);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.command-bar__hold {
+  margin-left: 8px;
+  padding: 0 5px;
+  border: 1px solid #b8c8d2;
+  color: #b8c8d2;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-style: normal;
+  vertical-align: middle;
+}
+.cmd-btn--on {
+  border-color: #b8c8d2;
+  color: #e8fbff;
+  background: linear-gradient(180deg, rgba(80, 95, 105, 0.7), rgba(30, 38, 44, 0.9));
+}
+.cmd-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.command-bar__keys {
+  grid-template-columns: 1fr 1fr;
+}
+.command-bar__secure {
+  grid-column: 1 / 3;
+}

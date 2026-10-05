@@ -1,0 +1,142 @@
+.term {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  background: rgba(0, 6, 10, 0.92);
+  box-shadow: inset 0 0 40px rgba(0, 229, 255, 0.05), 0 0 18px rgba(0, 120, 160, 0.2);
+  --prompt: #3dff9a;
+  text-transform: none;
+}
+.term--idle { --prompt: var(--amber); }
+.term--blocked { --prompt: #e04060; }
+.term--held { --prompt: #8fa6b2; }
+
+.term__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.2);
+  background: linear-gradient(90deg, rgba(0, 229, 255, 0.1), transparent);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 229, 255, 0.75);
+  text-transform: uppercase;
+}
+.term__dots { display: flex; gap: 4px; }
+.term__dots i { width: 6px; height: 6px; border-radius: 50%; background: rgba(0, 229, 255, 0.35); }
+.term__dots i:first-child { background: var(--prompt); box-shadow: 0 0 6px var(--prompt); }
+.term__title { flex: 1; }
+.term__state {
+  color: var(--prompt);
+  border: 1px solid currentColor;
+  padding: 0 5px;
+}
+.term--held .term__state { animation: pulse-light 1.2s ease-in-out infinite; }
+
+.term__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px 10px 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(200, 225, 240, 0.85);
+  cursor: text;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 2px, rgba(0, 229, 255, 0.025) 2px 3px);
+}
+.term__body::-webkit-scrollbar { width: 4px; }
+.term__body::-webkit-scrollbar-thumb { background: rgba(0, 229, 255, 0.35); }
+
+.term__line {
+  display: grid;
+  grid-template-columns: 58px auto 1fr;
+  gap: 6px;
+  align-items: baseline;
+  animation: term-in 0.18s ease-out;
+}
+.term__time { color: rgba(0, 229, 255, 0.3); font-size: 9px; }
+.term__glyph { width: 12px; text-align: center; }
+.term__prompt {
+  color: var(--prompt);
+  font-weight: 700;
+  text-shadow: 0 0 6px var(--prompt);
+  white-space: nowrap;
+}
+.term__text { white-space: pre-wrap; word-break: break-word; }
+
+.term__line--cmd .term__text { color: #e8fbff; }
+.term__line--tool .term__glyph,
+.term__line--tool .term__text { color: var(--cyan); }
+.term__line--think .term__glyph { color: #b88cff; }
+.term__line--think .term__text { color: rgba(200, 180, 255, 0.85); font-style: italic; }
+.term__line--ok .term__glyph,
+.term__line--ok .term__text { color: #3dff9a; }
+.term__line--warn .term__glyph,
+.term__line--warn .term__text { color: var(--amber); }
+.term__line--err .term__glyph,
+.term__line--err .term__text { color: #ff5c7a; }
+.term__line--out .term__text { color: rgba(170, 195, 210, 0.7); }
+.term__line--sys .term__glyph,
+.term__line--sys .term__text { color: rgba(140, 165, 180, 0.6); }
+.term__line--user .term__prompt { color: var(--amber); text-shadow: 0 0 6px var(--amber); }
+.term__line--user .term__text { color: #ffe2a0; }
+.term__line--uplink .term__glyph,
+.term__line--uplink .term__text { color: #5fd8ff; }
+
+.term__caret {
+  display: inline-block;
+  width: 7px;
+  height: 12px;
+  background: var(--prompt);
+  box-shadow: 0 0 6px var(--prompt);
+  vertical-align: -2px;
+  animation: caret-blink 1s steps(1) infinite;
+}
+.term__caret--inline { margin-left: 1px; animation: none; opacity: 0.8; }
+
+.term__jump {
+  position: absolute;
+  right: 14px;
+  bottom: 44px;
+  padding: 3px 8px;
+  border: 1px solid var(--amber);
+  background: rgba(30, 20, 0, 0.92);
+  color: var(--amber);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+
+.term__input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-top: 1px solid rgba(0, 229, 255, 0.25);
+  background: rgba(0, 20, 30, 0.8);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.term__input-prompt { color: var(--amber); font-weight: 700; white-space: nowrap; }
+.term__input input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #ffe2a0;
+  font: inherit;
+  caret-color: var(--amber);
+}
+.term__input input::placeholder { color: rgba(160, 190, 205, 0.35); }
+
+@keyframes caret-blink { 50% { opacity: 0; } }
+@keyframes term-in { from { opacity: 0; transform: translateX(-3px); } to { opacity: 1; transform: none; } }

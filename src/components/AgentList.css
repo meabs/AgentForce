@@ -210,3 +210,17 @@
     opacity: 0.55;
   }
 }
+
+.agent-card__pills { display: flex; gap: 4px; align-items: center; }
+.agent-hold {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  padding: 1px 4px;
+  border: 1px solid #b8c8d2;
+  color: #b8c8d2;
+  animation: blocked-blink 1.4s ease-in-out infinite;
+}
+.agent-card--held { filter: saturate(0.6); }
+.agent-card--held .agent-card__activity { color: rgba(184, 200, 210, 0.8); }

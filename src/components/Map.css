@@ -425,3 +425,19 @@
 @keyframes ring-spin { to { transform: rotate(360deg); } }
 @keyframes hover-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
 @keyframes reticle-spin { 0%,100% { transform: scale(1); opacity: 0.9; } 50% { transform: scale(1.08); opacity: 0.55; } }
+
+.unit-marker--held .unit-marker__ship { animation: none; filter: grayscale(0.6) drop-shadow(0 0 4px rgba(184, 200, 210, 0.7)); }
+.unit-marker--held .unit-marker__beacon { animation: none; opacity: 0.2; }
+
+/* Generous hit box around the zero-size anchor so ships are easy to click */
+.unit-marker::before {
+  content: '';
+  position: absolute;
+  left: -30px;
+  top: -38px;
+  width: 60px;
+  height: 52px;
+}
+.unit-marker .unit-label { pointer-events: auto; cursor: pointer; }
+.unit-marker:hover .unit-label { border-color: var(--amber); }
+.unit-marker:focus-visible .unit-label { outline: 1px solid var(--amber); outline-offset: 2px; }
