@@ -1,0 +1,113 @@
+import type { Agent } from '../types';
+
+export const INITIAL_AGENTS: Agent[] = [
+  {
+    id: 'cursor-7',
+    name: 'CURSOR-7',
+    mission: 'Permission Request',
+    status: 'RUNNING',
+    activity: 'Running find /workspace…',
+    progress: 72,
+    classLabel: 'SCOUT',
+    role: 'Recon',
+    hp: 88,
+    tokens: 64,
+    x: 32,
+    y: 44,
+  },
+  {
+    id: 'codex-3',
+    name: 'CODEX-3',
+    mission: 'Data Harvest',
+    status: 'IDLE',
+    activity: 'Reading harvest cache…',
+    progress: 41,
+    classLabel: 'SYNTH',
+    role: 'Patch',
+    hp: 95,
+    tokens: 38,
+    x: 55,
+    y: 38,
+  },
+  {
+    id: 'claude-prime',
+    name: 'CLAUDE-PRIME',
+    mission: 'Fleet Coordination',
+    status: 'RUNNING',
+    activity: 'Rebalancing priorities…',
+    progress: 58,
+    classLabel: 'COMMAND',
+    role: 'Lead',
+    hp: 100,
+    tokens: 81,
+    x: 46,
+    y: 58,
+  },
+  {
+    id: 'scout-9',
+    name: 'SCOUT-9',
+    mission: 'Perimeter Sweep',
+    status: 'BLOCKED',
+    activity: 'Blocked: vault handshake…',
+    progress: 22,
+    classLabel: 'PROBE',
+    role: 'Edge',
+    hp: 61,
+    tokens: 15,
+    x: 68,
+    y: 52,
+  },
+];
+
+export const ACTIVITY_LINES: Record<string, string[]> = {
+  'cursor-7': [
+    'Running find /workspace…',
+    'Scanning module boundaries…',
+    'Indexing dependency graph…',
+    'Tracing import cycles…',
+    'Flagging unused exports…',
+    'Compiling recon summary…',
+  ],
+  'codex-3': [
+    'Reading harvest cache…',
+    'Drafting auth edge-case fix…',
+    'Generating unit test stubs…',
+    'Validating type narrowing…',
+    'Applying lint-safe rewrite…',
+    'Queuing patch for review…',
+  ],
+  'claude-prime': [
+    'Rebalancing priorities…',
+    'Awaiting next directive…',
+    'Caching mission brief…',
+    'Standby: coordination open…',
+    'Reviewing blocked-agent queue…',
+    'Broadcasting fleet status…',
+  ],
+  'scout-9': [
+    'Blocked: vault handshake…',
+    'Retrying vault handshake…',
+    'Blocked: rate limit on probe…',
+    'Holding position at sector edge…',
+    'Blocked: unresolved secret ref…',
+    'Escalating credential request…',
+  ],
+};
+
+export const STATUS_CYCLE: Record<string, Array<'RUNNING' | 'IDLE' | 'BLOCKED'>> = {
+  'cursor-7': ['RUNNING', 'RUNNING', 'RUNNING', 'IDLE'],
+  'codex-3': ['IDLE', 'RUNNING', 'RUNNING', 'IDLE'],
+  'claude-prime': ['RUNNING', 'IDLE', 'RUNNING', 'IDLE'],
+  'scout-9': ['BLOCKED', 'BLOCKED', 'IDLE', 'BLOCKED'],
+};
+
+export const FEED_EVENTS = [
+  { agentName: 'CURSOR-7', message: 'initialized on node lx-7a', kind: 'ok' as const },
+  { agentName: 'CODEX-3', message: 'harvest pipeline warm', kind: 'info' as const },
+  { agentName: 'SCOUT-9', message: 'credential gate HOLD', kind: 'warn' as const },
+  { agentName: 'CLAUDE-PRIME', message: 'priority matrix refreshed', kind: 'ok' as const },
+  { agentName: 'CURSOR-7', message: 'permission request queued', kind: 'info' as const },
+  { agentName: 'CODEX-3', message: 'patch draft v3 staged', kind: 'ok' as const },
+  { agentName: 'SCOUT-9', message: 'perimeter sweep paused', kind: 'warn' as const },
+  { agentName: 'CLAUDE-PRIME', message: 'fleet ack cycle complete', kind: 'info' as const },
+];

@@ -1,0 +1,427 @@
+.tactical-map {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #020810;
+}
+
+.tactical-map__bg {
+  position: absolute;
+  inset: -5%;
+  background:
+    url('/textures/terrain.svg') center / cover no-repeat,
+    radial-gradient(ellipse 80% 50% at 50% 10%, rgba(0, 70, 100, 0.35), transparent 55%),
+    #020810;
+  filter: saturate(0.85) contrast(1.05);
+}
+
+.tactical-map__perspective {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1100px;
+}
+
+.tactical-map__plane {
+  position: relative;
+  width: 118%;
+  height: 95%;
+  transform: rotateX(54deg) rotateZ(-32deg) scale(1.08);
+  transform-style: preserve-3d;
+}
+
+.tactical-map__terrain {
+  position: absolute;
+  inset: 4% 6%;
+  background:
+    radial-gradient(ellipse 14% 10% at 30% 35%, rgba(5, 8, 12, 0.85), rgba(60, 72, 84, 0.35) 70%, transparent 72%),
+    radial-gradient(ellipse 10% 8% at 70% 62%, rgba(5, 8, 12, 0.85), rgba(60, 72, 84, 0.35) 70%, transparent 72%),
+    radial-gradient(ellipse 7% 5% at 58% 22%, rgba(5, 8, 12, 0.8), rgba(70, 82, 94, 0.3) 70%, transparent 72%),
+    radial-gradient(ellipse 6% 5% at 22% 72%, rgba(5, 8, 12, 0.8), rgba(70, 82, 94, 0.3) 70%, transparent 72%),
+    radial-gradient(ellipse 18% 12% at 82% 30%, rgba(8, 12, 16, 0.7), rgba(55, 66, 78, 0.25) 70%, transparent 72%),
+    radial-gradient(ellipse at 45% 50%, rgba(70, 82, 96, 0.55), rgba(30, 38, 46, 0.6) 55%, rgba(10, 16, 22, 0.2) 80%);
+  border: 1px solid rgba(0, 229, 255, 0.22);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.6), 0 0 80px rgba(0, 80, 120, 0.25);
+}
+
+.tactical-map__grid {
+  position: absolute;
+  inset: 8% 10%;
+  background:
+    linear-gradient(rgba(0, 229, 255, 0.11) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 229, 255, 0.11) 1px, transparent 1px);
+  background-size: 42px 42px;
+  opacity: 0.9;
+  mask-image: radial-gradient(ellipse at center, #000 35%, transparent 78%);
+  pointer-events: none;
+}
+
+.tactical-map__scanlines {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0, 0, 0, 0.12) 3px, rgba(0, 0, 0, 0.12) 4px);
+  animation: scan-drift 14s linear infinite;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.tactical-map__overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+
+.tactical-map__links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.tactical-map__links line {
+  stroke: rgba(0, 229, 255, 0.4);
+  stroke-width: 0.12;
+  stroke-dasharray: 0.8 0.5;
+  vector-effect: non-scaling-stroke;
+  stroke-width: 1.2;
+}
+.tactical-map__links .agent-link {
+  stroke: rgba(61, 255, 154, 0.35);
+  stroke-dasharray: 3 4;
+  animation: dash-flow 1.4s linear infinite;
+}
+.tactical-map__links .agent-link--idle { stroke: rgba(255, 180, 40, 0.3); }
+.tactical-map__links .agent-link--blocked { stroke: rgba(224, 64, 96, 0.45); animation: none; }
+
+.structure {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.structure__block {
+  position: absolute;
+  left: -26px;
+  top: -30px;
+  width: 52px;
+  height: 40px;
+  background:
+    linear-gradient(90deg, #2a3440 0 50%, #1a222c 50% 100%);
+  clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
+  filter: drop-shadow(0 0 6px rgba(0, 180, 220, 0.35));
+}
+.structure__block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(120, 150, 170, 0.35) 0 25%, transparent 25%);
+}
+.structure--core .structure__block {
+  left: -38px;
+  top: -46px;
+  width: 76px;
+  height: 60px;
+  filter: drop-shadow(0 0 12px rgba(0, 229, 255, 0.55));
+}
+.structure__light {
+  position: absolute;
+  left: -3px;
+  top: -14px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 10px var(--amber), 0 0 20px rgba(255, 180, 40, 0.5);
+  animation: pulse-light 2.4s ease-in-out infinite;
+}
+.structure--std .structure__light {
+  background: var(--cyan);
+  box-shadow: 0 0 10px var(--cyan);
+}
+.structure__reticle {
+  position: absolute;
+  left: -50px;
+  top: -40px;
+  width: 100px;
+  height: 64px;
+  border: 1px solid rgba(0, 229, 255, 0.7);
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  background: rgba(0, 229, 255, 0.06);
+  animation: reticle-spin 6s ease-in-out infinite;
+}
+.structure__label {
+  position: absolute;
+  left: 50%;
+  top: -76px;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: none;
+  color: #e8fbff;
+  background: rgba(0, 40, 55, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.6);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+}
+.structure--amber .structure__label {
+  border-color: rgba(255, 180, 40, 0.6);
+  color: var(--amber);
+  background: rgba(40, 26, 0, 0.8);
+}
+.structure--std .structure__label { top: -58px; }
+.structure--amber .structure__label { top: -58px; }
+
+.unit-marker {
+  position: absolute;
+  width: 0;
+  height: 0;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  z-index: 8;
+  transition: left 2.4s linear, top 2.4s linear;
+}
+.unit-marker__ring {
+  position: absolute;
+  left: -26px;
+  top: -9px;
+  width: 52px;
+  height: 18px;
+  border: 2px solid rgba(61, 255, 154, 0.75);
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(61, 255, 154, 0.5), inset 0 0 8px rgba(61, 255, 154, 0.35);
+}
+.unit-marker--idle .unit-marker__ring {
+  border-color: rgba(255, 180, 40, 0.8);
+  box-shadow: 0 0 12px rgba(255, 180, 40, 0.5), inset 0 0 8px rgba(255, 180, 40, 0.3);
+}
+.unit-marker--blocked .unit-marker__ring {
+  border-color: rgba(224, 64, 96, 0.85);
+  box-shadow: 0 0 12px rgba(224, 64, 96, 0.55), inset 0 0 8px rgba(224, 64, 96, 0.35);
+}
+.unit-marker--selected .unit-marker__ring {
+  border-style: dashed;
+  animation: ring-spin 3s linear infinite;
+}
+.unit-marker__beacon {
+  position: absolute;
+  left: -34px;
+  top: -12px;
+  width: 68px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  animation: beacon-pulse 2s ease-out infinite;
+}
+.unit-marker__ship {
+  position: absolute;
+  left: -12px;
+  top: -30px;
+  width: 24px;
+  height: 26px;
+  background: linear-gradient(180deg, #d8f6ff, #3fa8c8 60%, #0b3a4a);
+  clip-path: polygon(50% 0, 100% 80%, 62% 70%, 50% 100%, 38% 70%, 0 80%);
+  filter: drop-shadow(0 0 6px rgba(0, 229, 255, 0.9));
+  animation: hover-bob 2.2s ease-in-out infinite;
+}
+.unit-marker--idle .unit-marker__ship {
+  background: linear-gradient(180deg, #fff2cc, #ffb428 60%, #5a3a00);
+  filter: drop-shadow(0 0 6px rgba(255, 180, 40, 0.9));
+}
+.unit-marker--blocked .unit-marker__ship {
+  background: linear-gradient(180deg, #ffd6de, #e04060 60%, #4a0a18);
+  filter: drop-shadow(0 0 6px rgba(224, 64, 96, 0.9));
+}
+
+.unit-label {
+  position: absolute;
+  left: 0;
+  bottom: 38px;
+  transform: translateX(-50%);
+  min-width: 150px;
+  padding: 4px 8px 5px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: rgba(0, 12, 20, 0.9);
+  border: 1px solid rgba(0, 229, 255, 0.5);
+  border-left: 3px solid #3dff9a;
+  box-shadow: 0 0 14px rgba(0, 120, 160, 0.4);
+  pointer-events: none;
+  text-align: left;
+}
+.unit-label::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  width: 1px;
+  height: 12px;
+  background: linear-gradient(rgba(0, 229, 255, 0.7), transparent);
+}
+.unit-marker--idle .unit-label { border-left-color: var(--amber); }
+.unit-marker--blocked .unit-label { border-left-color: #e04060; }
+.unit-marker--selected .unit-label {
+  border-color: var(--amber);
+  box-shadow: 0 0 18px rgba(255, 180, 40, 0.4);
+}
+.unit-label__name {
+  font-family: var(--font-display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--cyan);
+}
+.unit-label__status {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  color: #3dff9a;
+}
+.unit-marker--idle .unit-label__status { color: var(--amber); }
+.unit-marker--blocked .unit-label__status { color: #e04060; }
+.unit-label__activity {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-transform: none;
+  color: rgba(200, 230, 255, 0.7);
+  white-space: nowrap;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tactical-map__crosshair {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 46px;
+  height: 46px;
+  margin: -23px 0 0 -23px;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, transparent 45%, rgba(255, 180, 40, 0.55) 45% 55%, transparent 55%) center / 100% 1px no-repeat,
+    linear-gradient(0deg, transparent 45%, rgba(255, 180, 40, 0.55) 45% 55%, transparent 55%) center / 1px 100% no-repeat;
+  opacity: 0.6;
+}
+
+.tactical-map__hud-tl {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: rgba(0, 229, 255, 0.55);
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 0 8px rgba(0, 0, 0, 0.8);
+}
+
+.tactical-map__hud-br {
+  position: absolute;
+  bottom: 88px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 8;
+  display: flex;
+  gap: 14px;
+  pointer-events: none;
+}
+
+.legend {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  padding-left: 12px;
+  position: relative;
+  color: rgba(200, 230, 255, 0.65);
+}
+.legend::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+}
+.legend--ally::before {
+  background: #3dff9a;
+  box-shadow: 0 0 6px #3dff9a;
+}
+.legend--neutral::before {
+  background: var(--amber);
+  box-shadow: 0 0 6px var(--amber);
+}
+.legend--threat::before {
+  background: #4aa8ff;
+  box-shadow: 0 0 6px #4aa8ff;
+}
+
+.tactical-map__tools {
+  position: absolute;
+  right: 326px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tactical-map__tools button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: rgba(0, 20, 32, 0.75);
+  color: var(--cyan);
+  cursor: pointer;
+  font-size: 12px;
+  backdrop-filter: blur(6px);
+}
+.tactical-map__tools button:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+
+.tactical-map__vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, transparent 30%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+@keyframes beacon-pulse {
+  0% {
+    transform: scale(0.55);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
+@keyframes scan-drift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 0 140px;
+  }
+}
+
+@keyframes dash-flow { to { stroke-dashoffset: -14; } }
+@keyframes pulse-light { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+@keyframes hover-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@keyframes reticle-spin { 0%,100% { transform: scale(1); opacity: 0.9; } 50% { transform: scale(1.08); opacity: 0.55; } }

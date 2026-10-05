@@ -1,0 +1,9 @@
+{
+  "id": "bc-da944dc0-9bd4-5ff1-8af9-0341f425d71f",
+  "name": "CURSOR-7",
+  "title": "CURSOR-7 fleet demo",
+  "state": "FINISHED",
+  "url": "https://cursor.com/agents/bc-da944dc0-9bd4-5ff1-8af9-0341f425d71f",
+  "updatedAt": "2026-10-05T21:28:43.993Z",
+  "summary": "Completed: HUD restyle + live CURSOR-7 feed + auto-sync bridge (cursor:watch, POST /api/cursor-live)"
+}
