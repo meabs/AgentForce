@@ -31,7 +31,7 @@ function isLive(v: unknown): v is CursorLive {
 
 /**
  * Polls /cursor-live.json (static file served by Vite from /public).
- * No API calls, no secrets — the file is updated from outside the browser.
+ * No API calls, no secrets: the file is updated from outside the browser.
  * Returns null until a valid file is read; keeps the last good value on errors.
  */
 export function useCursorLive(path = '/cursor-live.json') {

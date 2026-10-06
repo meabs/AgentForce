@@ -1,11 +1,21 @@
+import { useState } from 'react';
 import type { Agent, AgentStatus } from '../types';
+import { ArchiveTray, type ArchivedUnit } from './ArchiveTray';
 import './AgentList.css';
 
 interface AgentListProps {
   agents: Agent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  archived?: ArchivedUnit[];
+  onRecall?: (id: string) => void;
+  /** Ids that just finished and are about to fly to the archive */
+  departing?: ReadonlySet<string>;
+  /** Ids that just arrived (warp-in highlight) */
+  arriving?: ReadonlySet<string>;
 }
+
+type Filter = 'all' | 'working' | 'idle';
 
 const STATUS_LABEL: Record<AgentStatus, string> = {
   RUNNING: 'RUNNING',
@@ -13,27 +23,40 @@ const STATUS_LABEL: Record<AgentStatus, string> = {
   BLOCKED: 'BLOCKED',
 };
 
-export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
+export function AgentList({ agents, selectedId, onSelect, archived = [], onRecall, departing, arriving }: AgentListProps) {
+  const [filter, setFilter] = useState<Filter>('all');
   const running = agents.filter((a) => a.status === 'RUNNING').length;
-  const idle = agents.filter((a) => a.status === 'IDLE').length;
+  const idle = agents.filter((a) => a.status !== 'RUNNING').length;
+  const shown = agents.filter((a) => filter === 'all' || (filter === 'working' ? a.status === 'RUNNING' : a.status !== 'RUNNING'));
   return (
     <aside className="agent-list hud-panel" aria-label="Agent roster">
       <div className="hud-panel__header">
         <div>
           <span className="hud-panel__tag">AGENT ORCHESTRATOR</span>
           <div className="agent-list__tabs">
-            <span>ALL ({agents.length})</span>
-            <span className="is-active">WORKING ({running})</span>
-            <span>IDLE ({idle})</span>
+            {(
+              [
+                ['all', `ALL (${agents.length})`],
+                ['working', `WORKING (${running})`],
+                ['idle', `IDLE/ALERT (${idle})`],
+              ] as const
+            ).map(([f, label]) => (
+              <button key={f} type="button" className={filter === f ? 'is-active' : ''} onClick={() => setFilter(f)}>
+                {label}
+              </button>
+            ))}
           </div>
         </div>
         <span className="hud-panel__meta">LIVE</span>
       </div>
       <ul className="agent-list__items">
-        {agents.map((agent) => {
+        {shown.map((agent) => {
           const active = agent.id === selectedId;
           return (
-            <li key={agent.id}>
+            <li
+              key={agent.id}
+              className={`${departing?.has(agent.id) ? 'is-departing' : ''}${arriving?.has(agent.id) ? ' is-arriving' : ''}`}
+            >
               <button
                 type="button"
                 className={`agent-card agent-card--${agent.status.toLowerCase()}${agent.held ? ' agent-card--held' : ''}${active ? ' agent-card--selected' : ''}`}
@@ -82,7 +105,9 @@ export function AgentList({ agents, selectedId, onSelect }: AgentListProps) {
             </li>
           );
         })}
+        {shown.length === 0 && <li className="agent-list__empty">NO UNITS MATCH · {filter.toUpperCase()}</li>}
       </ul>
+      <ArchiveTray units={archived} selectedId={selectedId} onOpen={onSelect} onRecall={onRecall} />
     </aside>
   );
 }

@@ -1,0 +1,220 @@
+.terr-grid {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.terr-tile--void { fill: rgba(0, 20, 30, 0.35); }
+.terr-tile--fog { fill: url(#terr-fog); stroke: rgba(0, 229, 255, 0.07); stroke-width: 0.1; }
+.terr-tile--fog.is-hover { stroke: rgba(255, 180, 40, 0.9); stroke-width: 0.3; }
+.terr-lit.is-hover rect:first-child { stroke: #fff; stroke-width: 0.35; }
+.terr-lit.is-hot rect:first-child { animation: terr-hot 1.2s ease-out; }
+.terr-borders { fill: none; stroke: rgba(0, 229, 255, 0.45); stroke-width: 0.22; }
+.terr-label {
+  font-family: var(--font-display);
+  font-size: 2.1px;
+  letter-spacing: 0.25px;
+  fill: rgba(216, 240, 255, 0.8);
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: rgba(0, 8, 14, 0.9);
+  stroke-width: 0.7px;
+  pointer-events: none;
+}
+.terr-unit circle:first-child { animation: terr-ping 1.6s ease-out infinite; transform-box: fill-box; transform-origin: center; }
+.terr-unit { transition: transform 1.2s ease-out; }
+
+@keyframes terr-hot {
+  0% { fill-opacity: 1; stroke-width: 0.8; }
+  100% { }
+}
+@keyframes terr-ping {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* ---------- full-screen overlay ---------- */
+.terr-overlay {
+  position: absolute;
+  inset: 56px 12px 92px;
+  z-index: 62;
+  display: grid;
+  place-items: stretch;
+  animation: terr-in 0.35s ease-out;
+}
+@keyframes terr-in {
+  from { opacity: 0; transform: scale(0.97); filter: blur(4px); }
+  to { opacity: 1; transform: none; filter: none; }
+}
+.terr-overlay__frame {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: linear-gradient(160deg, rgba(0, 24, 36, 0.95), rgba(0, 8, 14, 0.97));
+}
+.terr-overlay__head {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.25);
+}
+.terr-overlay__head h2 {
+  margin: 2px 0 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  letter-spacing: 0.16em;
+  color: #e8fbff;
+  text-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
+}
+.terr-overlay__tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.terr-overlay__tabs button {
+  font: 10px var(--font-mono);
+  letter-spacing: 0.12em;
+  color: rgba(0, 229, 255, 0.75);
+  background: rgba(0, 30, 44, 0.7);
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  padding: 5px 10px;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+.terr-overlay__tabs button em { font-style: normal; color: rgba(255, 180, 40, 0.7); }
+.terr-overlay__tabs button.is-active { color: #001018; background: var(--cyan); box-shadow: 0 0 14px rgba(0, 229, 255, 0.5); }
+.terr-overlay__tabs button.is-active em { color: #3a2500; }
+.terr-overlay__close {
+  background: transparent;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: var(--cyan);
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+.terr-overlay__body {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 1fr 330px;
+  gap: 16px;
+  padding: 14px 16px;
+}
+.terr-overlay__map {
+  position: relative;
+  height: 100%;
+  aspect-ratio: 1;
+  max-width: 100%;
+  justify-self: center;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 40px rgba(0, 140, 190, 0.25), inset 0 0 40px rgba(0, 0, 0, 0.6);
+  background: #020a12;
+  overflow: hidden;
+}
+.terr-overlay__scan {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, rgba(0, 229, 255, 0.1) 48%, rgba(0, 229, 255, 0.22) 50%, transparent 52%);
+  background-size: 100% 220%;
+  animation: terr-scan 4.5s linear infinite;
+  mix-blend-mode: screen;
+}
+@keyframes terr-scan { from { background-position: 0 120%; } to { background-position: 0 -120%; } }
+.terr-overlay__side {
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.terr-big { display: flex; align-items: baseline; gap: 10px; }
+.terr-big strong {
+  font-family: var(--font-display);
+  font-size: 46px;
+  color: var(--cyan);
+  text-shadow: 0 0 20px rgba(0, 229, 255, 0.7);
+}
+.terr-big span { color: var(--amber); letter-spacing: 0.2em; }
+.terr-kv { display: flex; justify-content: space-between; border-bottom: 1px dashed rgba(0, 229, 255, 0.15); padding: 2px 0; }
+.terr-kv b { font-family: var(--font-display); font-size: 12px; }
+.terr-note { color: rgba(160, 200, 220, 0.6); font-size: 9px; line-height: 1.5; padding: 4px 0; }
+.terr-section {
+  margin-top: 6px;
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: var(--cyan);
+  border-bottom: 1px solid rgba(0, 229, 255, 0.25);
+  padding-bottom: 3px;
+}
+.terr-legend, .terr-recent, .terr-districts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+.terr-legend li, .terr-recent li { display: flex; align-items: center; gap: 8px; }
+.terr-legend i, .terr-recent i { width: 9px; height: 9px; flex: none; }
+.terr-legend b { margin-left: auto; font-family: var(--font-display); }
+.terr-recent code { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-transform: none; color: #cfefff; font-family: var(--font-mono); }
+.terr-recent span { color: rgba(160, 200, 220, 0.6); }
+.terr-districts li { display: grid; grid-template-columns: 120px 1fr 34px; align-items: center; gap: 8px; }
+.terr-districts li span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.terr-districts__bar { height: 5px; background: rgba(0, 229, 255, 0.1); }
+.terr-districts__bar div { height: 100%; background: linear-gradient(90deg, var(--cyan), #3dff9a); box-shadow: 0 0 6px rgba(0, 229, 255, 0.6); transition: width 0.6s; }
+.terr-districts b { text-align: right; }
+.terr-hover { display: flex; flex-direction: column; gap: 4px; }
+.terr-hover code { text-transform: none; color: #fff; font-size: 11px; word-break: break-all; }
+.terr-empty { color: rgba(160, 200, 220, 0.45); }
+
+/* ---------- minimap fog mode ---------- */
+.minimap__fog {
+  position: relative;
+  width: 168px;
+  height: 132px;
+  margin: 6px auto 8px;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  background: #020a12;
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18);
+  cursor: pointer;
+  overflow: hidden;
+}
+.minimap__fog .terr-grid { position: absolute; inset: 0; }
+.minimap__fog-stat {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  font-size: 9px;
+  color: var(--amber);
+  background: rgba(0, 8, 14, 0.8);
+  padding: 0 4px;
+  pointer-events: none;
+}
+.minimap__modes { display: flex; gap: 4px; }
+.minimap__modes button {
+  font: 9px var(--font-mono);
+  letter-spacing: 0.1em;
+  padding: 1px 6px;
+  color: rgba(0, 229, 255, 0.7);
+  background: transparent;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  cursor: pointer;
+}
+.minimap__modes button.is-active { color: #001018; background: var(--cyan); }
+
+/* ---------- isometric fog on the tactical map ---------- */
+.fog-tile { transition: fill-opacity 0.6s, fill 0.6s; }
+.fog-tile--fog { fill: #01060c; fill-opacity: 0.62; stroke: rgba(0, 229, 255, 0.06); stroke-width: 0.5; vector-effect: non-scaling-stroke; }
+.fog-tile--void { fill: #01060c; fill-opacity: 0.4; }
+.fog-tile--lit { stroke-width: 0.8; vector-effect: non-scaling-stroke; }
+.fog-tile--hot { animation: fog-hot 1.4s ease-out; }
+@keyframes fog-hot { 0% { fill-opacity: 0.95; } }
+.fog-district {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-display);
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: rgba(216, 240, 255, 0.5);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+  white-space: nowrap;
+  z-index: 4;
+}
+.fog-district b { color: rgba(0, 229, 255, 0.85); font-weight: 400; margin-left: 4px; }

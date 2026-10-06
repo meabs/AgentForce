@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Agent } from '../types';
+import type { UplinkInfo } from '../hooks/useCloudAgents';
 import './CommandBar.css';
 
 export type CommandId = 'summon' | 'assign' | 'hold' | 'retreat' | 'approve';
@@ -8,16 +9,32 @@ interface CommandBarProps {
   selected: Agent | undefined;
   onCommand: (cmd: CommandId) => void;
   onOpenCockpit: () => void;
+  uplink: UplinkInfo;
+  /** Externally "pressed" button (demo director) */
+  pulse?: CommandId | null;
+  /** Replaces the uplink status line (demo) */
+  statusLabel?: string;
 }
 
-export function CommandBar({ selected, onCommand, onOpenCockpit }: CommandBarProps) {
-  const [last, setLast] = useState<CommandId | null>(null);
+export function CommandBar({ selected, onCommand, onOpenCockpit, uplink, pulse, statusLabel }: CommandBarProps) {
+  const [lastLocal, setLast] = useState<CommandId | null>(null);
+  const last = pulse ?? lastLocal;
   const held = !!selected?.held;
+  const real = !!selected?.cloudId;
+  const holdLabel = real ? (held ? 'RESUME BOARD' : 'HOLD BOARD') : held ? 'RESUME' : 'HOLD';
+  const tips: Partial<Record<CommandId, string>> = real
+    ? {
+        assign: 'sends a follow-up prompt to the cloud agent',
+        hold: 'local only: pauses board updates, the cloud agent keeps running',
+        retreat: 'stops the cloud agent (confirm first)',
+        approve: 'sends follow-up "Approved, proceed."',
+      }
+    : {};
 
   const commands: Array<{ id: CommandId; label: string; icon: string; key: string; cls?: string }> = [
     { id: 'summon', label: 'SUMMON AGENT', icon: '＋', key: 'S' },
     { id: 'assign', label: 'ASSIGN MISSION', icon: '⌖', key: 'A' },
-    { id: 'hold', label: held ? 'RESUME' : 'HOLD', icon: held ? '▶' : '❚❚', key: 'H', cls: held ? ' cmd-btn--on' : '' },
+    { id: 'hold', label: holdLabel, icon: held ? '▶' : '❚❚', key: 'H', cls: held ? ' cmd-btn--on' : '' },
     { id: 'retreat', label: 'RETREAT', icon: '↩', key: 'R' },
     { id: 'approve', label: 'APPROVE PLAN', icon: '✓', key: 'P', cls: ' cmd-btn--primary' },
   ];
@@ -40,7 +57,7 @@ export function CommandBar({ selected, onCommand, onOpenCockpit }: CommandBarPro
       >
         <span className="command-bar__unit-tag">SELECTED</span>
         <strong>
-          {selected?.name ?? '—'}
+          {selected?.name ?? 'NO UNIT'}
           {held && <em className="command-bar__hold">{selected?.retreated ? 'RTB' : 'HOLD'}</em>}
         </strong>
         <div className="command-bar__hp">
@@ -70,6 +87,7 @@ export function CommandBar({ selected, onCommand, onOpenCockpit }: CommandBarPro
         {commands.map((c) => (
           <button
             key={c.id}
+            data-cmd={c.id}
             type="button"
             disabled={c.id !== 'summon' && !selected}
             className={`cmd-btn${last === c.id ? ' cmd-btn--fired' : ''}${c.cls ?? ''}`}
@@ -78,7 +96,7 @@ export function CommandBar({ selected, onCommand, onOpenCockpit }: CommandBarPro
               onCommand(c.id);
               window.setTimeout(() => setLast(null), 400);
             }}
-            title={`${c.label} (${c.key})${c.id === 'summon' ? '' : ` → ${selected?.name ?? 'no unit'}`}`}
+            title={`${c.label} (${c.key})${c.id === 'summon' ? ' · launch a cloud agent or a drill unit' : ` → ${selected?.name ?? 'no unit'}`}${tips[c.id] ? ` · ${tips[c.id]}` : ''}`}
           >
             <span className="cmd-btn__icon">{c.icon}</span>
             <span className="cmd-btn__label">{c.label}</span>
@@ -100,7 +118,20 @@ export function CommandBar({ selected, onCommand, onOpenCockpit }: CommandBarPro
         <div>
           <kbd>ESC</kbd> CLOSE COCKPIT
         </div>
-        <div className="command-bar__secure">🔒 SECURE CHANNEL · AES-256</div>
+        <div
+          className={`command-bar__secure command-bar__uplink--${uplink.phase}`}
+          title={uplink.phase === 'online' ? 'Commands on real units go to the Cursor Cloud Agents API' : uplink.reason ?? ''}
+        >
+          {statusLabel
+            ? statusLabel
+            : uplink.phase === 'online'
+            ? `⇅ CMD UPLINK ONLINE · API ${uplink.apiVersion ?? ''}`
+            : uplink.phase === 'checking'
+              ? '⇅ CMD UPLINK HANDSHAKE…'
+              : uplink.phase === 'offline'
+                ? '⇅ CMD UPLINK OFFLINE · SET CURSOR_API_KEY'
+                : `⇅ CMD UPLINK ERROR`}
+        </div>
       </div>
     </footer>
   );

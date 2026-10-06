@@ -226,3 +226,79 @@
   to { transform: none; opacity: 1; }
 }
 @keyframes term-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ---- LIVE COMMAND UPLINK ---- */
+.cockpit__badge--cmd { border-color: #3dff9a; color: #3dff9a; }
+.cockpit__badge--cmdoff { border-color: #e04060; color: #ff8aa0; }
+.cockpit__cmdlink {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid rgba(61, 255, 154, 0.4);
+  background: rgba(0, 30, 18, 0.55);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: rgba(190, 240, 215, 0.85);
+}
+.cockpit__cmdlink b { color: #3dff9a; font-weight: normal; }
+.cockpit__cmdlink--off { border-color: rgba(224, 64, 96, 0.55); background: rgba(36, 0, 8, 0.55); color: #ffb0c0; }
+.cockpit__cmdlink--off b { color: #ff5c7a; }
+.cockpit__cmdlink--wait { border-color: rgba(255, 180, 40, 0.45); color: var(--amber); }
+.cockpit__cmdlink-row { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cockpit__cmdlink-repo { color: rgba(160, 210, 230, 0.7); }
+.cockpit__cmdlink-busy { color: var(--amber); animation: cmd-blink 0.8s steps(2) infinite; }
+.cockpit__followup {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(255, 180, 40, 0.5);
+  background: rgba(10, 6, 0, 0.9);
+  color: #ffe6b8;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  resize: none;
+  outline: none;
+}
+.cockpit__followup:focus { border-color: var(--amber); box-shadow: 0 0 10px rgba(255, 180, 40, 0.3); }
+.cockpit__followup-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: rgba(255, 216, 144, 0.6);
+}
+.cockpit__followup-foot button {
+  padding: 6px 10px;
+  border: 1px solid var(--amber);
+  background: rgba(60, 38, 0, 0.8);
+  color: var(--amber);
+  font-family: var(--font-display);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cockpit__followup-foot button:disabled { opacity: 0.4; cursor: not-allowed; }
+.ck-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+@keyframes cmd-blink { 50% { opacity: 0.3; } }
+
+.cockpit__archive {
+  align-self: center;
+  margin-right: 6px;
+  padding: 4px 8px;
+  font: 9px var(--font-mono);
+  letter-spacing: 0.14em;
+  color: var(--amber);
+  background: rgba(40, 26, 0, 0.6);
+  border: 1px solid rgba(255, 180, 40, 0.5);
+  cursor: pointer;
+}
+.cockpit__archive:hover { background: rgba(80, 52, 0, 0.8); box-shadow: 0 0 10px rgba(255, 180, 40, 0.35); }
+.cockpit__head:has(.cockpit__archive) { grid-template-columns: 46px minmax(0, 1fr) auto auto; }
+.cockpit__head .cockpit__archive { margin-right: 0; }

@@ -11,7 +11,8 @@
     "cursor:status": "node scripts/write-cursor-status.mjs",
     "cursor:push": "node scripts/write-cursor-status.mjs",
     "cursor:watch": "node scripts/auto-sync-cursor.mjs",
-    "cursor:sync": "node scripts/auto-sync-cursor.mjs --once"
+    "cursor:sync": "node scripts/auto-sync-cursor.mjs --once",
+    "build:demo": "tsc -b && VITE_STATIC_DEMO=1 vite build --outDir dist-demo && node -e \"require('fs').rmSync('dist-demo/cursor-live.json',{force:true})\""
   },
   "dependencies": {
     "react": "^19.2.8",

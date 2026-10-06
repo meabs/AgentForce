@@ -2,23 +2,40 @@ import './SidePanels.css';
 
 interface MissionStatusProps {
   progress: number;
+  objective?: string;
+  statusLabel?: string;
+  opCode?: string;
+  objectives?: Array<{ text: string; state: 'done' | 'active' | 'todo' }>;
 }
 
-export function MissionStatus({ progress }: MissionStatusProps) {
+const DEFAULT_OBJECTIVES: MissionStatusProps['objectives'] = [
+  { text: 'Recon target repository', state: 'done' },
+  { text: 'Harvest dependency intel', state: 'done' },
+  { text: 'Resolve credential gate', state: 'active' },
+  { text: 'Approve merge plan', state: 'todo' },
+];
+
+export function MissionStatus({
+  progress,
+  objective = 'ESTABLISH DATA BRIDGE',
+  statusLabel = 'IN PROGRESS',
+  opCode = 'OP-0417',
+  objectives = DEFAULT_OBJECTIVES,
+}: MissionStatusProps) {
   return (
     <section className="hud-panel side-panel" aria-label="Mission status">
       <div className="hud-panel__header">
         <span className="hud-panel__tag">MISSION STATUS</span>
-        <span className="hud-panel__meta">OP-0417</span>
+        <span className="hud-panel__meta">{opCode}</span>
       </div>
       <div className="side-panel__body">
         <div className="kv">
           <span>OBJECTIVE</span>
-          <strong>ESTABLISH DATA BRIDGE</strong>
+          <strong>{objective}</strong>
         </div>
         <div className="kv">
           <span>STATUS</span>
-          <strong className="text-amber">IN PROGRESS</strong>
+          <strong className={progress >= 100 ? 'text-cyan' : 'text-amber'}>{statusLabel}</strong>
         </div>
         <div className="progress">
           <div className="progress__track">
@@ -28,10 +45,11 @@ export function MissionStatus({ progress }: MissionStatusProps) {
           <span className="progress__value">{progress}%</span>
         </div>
         <ul className="objectives">
-          <li className="done">◆ Recon target repository</li>
-          <li className="done">◆ Harvest dependency intel</li>
-          <li className="active">◇ Resolve credential gate</li>
-          <li>◇ Approve merge plan</li>
+          {objectives!.map((o) => (
+            <li key={o.text} className={o.state === 'todo' ? '' : o.state}>
+              {o.state === 'done' ? '◆' : '◇'} {o.text}
+            </li>
+          ))}
         </ul>
       </div>
     </section>

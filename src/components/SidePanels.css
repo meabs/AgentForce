@@ -252,3 +252,9 @@
 .live-link--off .live-link__head { color: rgba(160, 180, 190, 0.7); }
 .live-link--off .live-link__dot { animation: none; }
 @keyframes pulse-light { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+.live-link--cmd { margin-top: 6px; }
+.live-link--cmd.live-link--off { border-color: rgba(224, 64, 96, 0.45); background: rgba(36, 0, 8, 0.4); }
+.live-link--cmd.live-link--off .live-link__head { color: #ff8aa0; }
+
+.notices li.notices__fresh { animation: notice-in 0.5s ease-out; }
+@keyframes notice-in { from { opacity: 0; transform: translateX(10px); background: rgba(255, 180, 40, 0.2); } }

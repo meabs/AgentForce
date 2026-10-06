@@ -213,3 +213,6 @@
 .command-bar__secure {
   grid-column: 1 / 3;
 }
+.command-bar__uplink--offline,
+.command-bar__uplink--error { color: #ff8aa0; }
+.command-bar__uplink--checking { color: var(--amber); }

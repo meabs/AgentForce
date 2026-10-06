@@ -42,6 +42,11 @@ export function useTerminalLogs(
       const next = { ...prev };
       for (const a of agents) {
         if (next[a.id]) continue;
+        if (a.id.startsWith('bc')) {
+          // Real cloud unit: no fake history, the uplink streams its transcript.
+          next[a.id] = [mk('sys', `session attached · ${a.name} · ${a.id} · command uplink`)];
+          continue;
+        }
         const script = RUN_SCRIPTS[a.id] ?? GENERIC_SCRIPT;
         const seedCount = RUN_SCRIPTS[a.id] ? 5 : 2;
         cursorRef.current[a.id] = seedCount;
@@ -81,6 +86,7 @@ export function useTerminalLogs(
       for (const a of agentsRef.current) {
         const ov = ovRef.current[a.id];
         if (ov?.held) continue;
+        if (a.id.startsWith('bc')) continue; // real units: transcript comes from the uplink
         if (a.id === 'cursor-7' && liveRef.current) {
           if (t % 8 === 0) {
             const L = liveRef.current;

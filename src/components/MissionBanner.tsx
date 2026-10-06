@@ -1,15 +1,19 @@
+import type { ReactNode } from 'react';
 import './MissionBanner.css';
 
 interface MissionBannerProps {
   title?: string;
   leftMeta?: string;
   rightMeta?: string;
+  /** Interactive controls rendered on the right of the top bar */
+  right?: ReactNode;
 }
 
 export function MissionBanner({
   title = 'MISSION ACTIVE',
   leftMeta = 'ORCHESTRATOR v2.7.1  ·  SYS-UPLINK: SECURE',
   rightMeta = 'SOL-9 / LUNAR OUTPOST  ·  CYCLE 4782.19',
+  right,
 }: MissionBannerProps) {
   return (
     <header className="top-bar">
@@ -26,7 +30,7 @@ export function MissionBanner({
           ❯
         </span>
       </div>
-      <div className="top-bar__right">{rightMeta}</div>
+      <div className="top-bar__right">{right ?? rightMeta}</div>
       <div className="top-bar__scan" aria-hidden />
     </header>
   );
