@@ -190,6 +190,7 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   const [paused, setPaused] = useState(false);
   const world = useRef<World>(freshWorld());
   const elapsedRef = useRef(0);
+  const lastPointerEngageRef = useRef(0);
   const terr = useTerritoryState({ revealSound: true });
   const touchRef = useRef(terr.touch);
   touchRef.current = terr.touch;
@@ -471,10 +472,26 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   }, [terr]);
 
   const engage = useCallback(() => {
-    unlock();
+    // Do not await audio. Safari may reject or delay resume, but the replay
+    // clock must always start from this user gesture.
+    try {
+      void unlock();
+    } catch {
+      // Audio is optional for the replay.
+    }
     reset();
     setPhase('playing');
   }, [reset]);
+  const engageFromPointer = useCallback(() => {
+    lastPointerEngageRef.current = performance.now();
+    engage();
+  }, [engage]);
+  const engageFromClick = useCallback(() => {
+    // A pointerup is followed by click. Keep keyboard-triggered clicks working
+    // without resetting the replay twice on touch devices.
+    if (performance.now() - lastPointerEngageRef.current < 500) return;
+    engage();
+  }, [engage]);
 
   // standby countdown (auto-engage so headless capture and kiosk loops just work)
   useEffect(() => {
@@ -675,7 +692,7 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
           <div className="demo-rec__bar">
             <div style={{ width: `${Math.min(100, (elapsed / DEMO_LENGTH_MS) * 100)}%` }} />
           </div>
-          <em>SPACE PAUSE · R RESTART{canExit ? ' · ESC EXIT' : ''}</em>
+          <em>TOUCH CONTROLS AVAILABLE</em>
         </div>
       )}
 
@@ -685,10 +702,10 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
             <span className="demo-card__eyebrow">MISSION REPLAY · OP-0417</span>
             <h1>AGENT FLEET COMMAND</h1>
             <p>Sixty seconds. Four AI coding agents. One commander.</p>
-            <button type="button" className="demo-card__go" onClick={engage}>
+            <button type="button" className="demo-card__go" onPointerUp={engageFromPointer} onClick={engageFromClick}>
               ▶ ENGAGE {autostart && countdown > 0 ? `· ${countdown}` : ''}
             </button>
-            <small>CLICK TO ENGAGE WITH SOUND · NO API KEY NEEDED · M TO MUTE</small>
+            <small>TAP TO ENGAGE WITH SOUND · NO API KEY NEEDED</small>
           </div>
         </div>
       )}
@@ -733,7 +750,7 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
               </div>
             </div>
             <div className="demo-card__actions">
-              <button type="button" className="demo-card__go" onClick={engage}>
+              <button type="button" className="demo-card__go" onPointerUp={engageFromPointer} onClick={engageFromClick}>
                 ↻ REPLAY
               </button>
               {canExit && (
@@ -745,6 +762,22 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
             <small>SIMULATED REPLAY · ESTIMATES ARE ILLUSTRATIVE{loop ? ' · LOOPING' : ''}</small>
           </div>
         </div>
+      )}
+
+      {phase === 'playing' && (
+        <nav className="demo-touch-controls" aria-label="Replay controls">
+          <button type="button" onClick={() => setPaused((value) => !value)}>
+            {paused ? '▶' : '❚❚'} <span>{paused ? 'RESUME' : 'PAUSE'}</span>
+          </button>
+          <button type="button" onClick={engage}>
+            ↻ <span>RESTART</span>
+          </button>
+          {canExit && (
+            <button type="button" onClick={onExit}>
+              × <span>EXIT</span>
+            </button>
+          )}
+        </nav>
       )}
 
       <div className="crt-overlay" aria-hidden />

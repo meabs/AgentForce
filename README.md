@@ -37,7 +37,7 @@ real orders.
 | Simulated units (mock fleet) | 🟢 Tested, working | No key or network needed |
 | Cockpit, streaming terminal and console | 🟢 Tested, working | |
 | Keyboard shortcuts | 🟢 Tested, working | |
-| Mission Replay demo (`?demo=1`) | 🟢 Tested, working | Runs with no API key |
+| Hosted Mission Replay demo (`https://meabs.github.io/AgentForce/`) | 🟢 Tested, working | Runs with no API key and supports desktop, tablet, and phone layouts. Checked with emulated iPhone 13 and Pixel 7 devices, plus desktop 1600×900. Not tested on a physical phone. |
 | Fog of war map (Territory overlay, minimap FOG mode) | 🟢 Tested, working | Real-agent coverage is partial, see limits below |
 | War Room timeline | 🟢 Tested, working | |
 | Archive tray UI | 🟢 Tested, working | Board-only, saved in `localStorage` |

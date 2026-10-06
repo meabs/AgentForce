@@ -105,9 +105,13 @@ function ensure(): AudioContext | null {
   return ctx;
 }
 
-export function unlock() {
+/** Start audio inside a user gesture. This is deliberately best-effort on iOS. */
+export function unlock(): Promise<void> {
   const c = ensure();
-  if (c && c.state === 'suspended') void c.resume().catch(() => {});
+  if (!c || c.state !== 'suspended') return Promise.resolve();
+  return c.resume().catch(() => {
+    // The replay remains usable when Safari rejects an audio resume.
+  });
 }
 
 if (typeof window !== 'undefined') {
@@ -326,6 +330,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
 }
 
 let lastVoiceAt = 0;
+let voiceWatchdog: number | undefined;
 
 /**
  * Short robotic voice line. Low pitch + clipped rate reads as "ship computer".
@@ -347,7 +352,21 @@ export function say(text: string, opts: { force?: boolean; rate?: number; pitch?
     u.pitch = opts.pitch ?? 0.35;
     u.rate = opts.rate ?? 1.02;
     u.volume = 0.9;
+    u.onend = () => {
+      if (voiceWatchdog) window.clearTimeout(voiceWatchdog);
+      voiceWatchdog = undefined;
+    };
     synth.speak(u);
+    // Safari can leave an utterance in "speaking" forever. Nothing waits for
+    // speech, but clearing it keeps later cues from becoming a stuck queue.
+    if (voiceWatchdog) window.clearTimeout(voiceWatchdog);
+    voiceWatchdog = window.setTimeout(() => {
+      try {
+        synth.cancel();
+      } catch {
+        /* speech engine unavailable */
+      }
+    }, 8_000);
   } catch {
     /* speech engine unavailable (headless, locked down): stay silent */
   }

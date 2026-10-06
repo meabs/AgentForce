@@ -91,6 +91,7 @@ export function CommandBar({ selected, onCommand, onOpenCockpit, uplink, pulse, 
             type="button"
             disabled={c.id !== 'summon' && !selected}
             className={`cmd-btn${last === c.id ? ' cmd-btn--fired' : ''}${c.cls ?? ''}`}
+            aria-label={c.label}
             onClick={() => {
               setLast(c.id);
               onCommand(c.id);
