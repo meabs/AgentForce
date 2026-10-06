@@ -1,4 +1,4 @@
-import { toggleMuted, useMuted, sfx } from '../lib/sfx';
+import { toggleAmbient, toggleMuted, useAmbient, useMuted, sfx } from '../lib/sfx';
 import './HudToolbar.css';
 
 interface Props {
@@ -12,6 +12,7 @@ interface Props {
 
 export function HudToolbar({ onDemo, onTerritory, onWarRoom, territoryOpen, warRoomOpen, demo }: Props) {
   const muted = useMuted();
+  const ambient = useAmbient();
   return (
     <div className="hud-toolbar">
       <button
@@ -26,6 +27,19 @@ export function HudToolbar({ onDemo, onTerritory, onWarRoom, territoryOpen, warR
         </span>
         {muted ? 'SOUND OFF' : 'SOUND ON'}
         <kbd>M</kbd>
+      </button>
+      <button
+        type="button"
+        className={`hud-tool${ambient && !muted ? ' is-on' : ' is-off'}`}
+        onClick={toggleAmbient}
+        title={`${ambient ? 'Stop' : 'Play'} the low bridge hum ambience (B)${muted ? '. Sound is muted' : ''}`}
+        aria-pressed={ambient}
+      >
+        <span className="hud-tool__icon" aria-hidden>
+          {ambient ? '≋' : '∼'}
+        </span>
+        {ambient ? 'HUM ON' : 'HUM OFF'}
+        <kbd>B</kbd>
       </button>
       {onTerritory && (
         <button type="button" className={`hud-tool${territoryOpen ? ' is-active' : ''}`} onClick={() => (sfx.tick(), onTerritory())} title="Territory map: fog of war (T)">
