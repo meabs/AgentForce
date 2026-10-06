@@ -44,13 +44,17 @@ export interface ActivityEntry {
   kind?: 'info' | 'warn' | 'ok';
 }
 
-export type TermKind = 'cmd' | 'tool' | 'think' | 'ok' | 'warn' | 'err' | 'out' | 'sys' | 'user' | 'uplink';
+export type TermKind = 'cmd' | 'tool' | 'think' | 'ok' | 'warn' | 'err' | 'out' | 'sys' | 'user' | 'uplink' | 'say' | 'call';
 
 export interface TermLine {
   id: string;
   t: number;
   kind: TermKind;
   text: string;
+  /** Still receiving streamed deltas (renders a typing cursor) */
+  live?: boolean;
+  /** Stream key: deltas with the same key extend this line */
+  skey?: string;
 }
 
 /** Local, in-demo command overrides layered on top of ticker / live data. */

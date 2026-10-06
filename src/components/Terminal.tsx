@@ -8,7 +8,11 @@ interface TerminalProps {
   held: boolean;
   lines: TermLine[];
   onSubmit: (input: string) => void;
+  /** Real units: live stream link state (LIVE pulse / POLLING fallback) */
+  link?: { state: 'connecting' | 'live' | 'polling' | 'ended' | 'error'; reason?: string } | null;
 }
+
+const LINK_LABEL = { connecting: 'LINKING…', live: 'LIVE', polling: 'POLLING', ended: 'STANDBY', error: 'RELINK…' } as const;
 
 const FRESH_MS = 2500;
 const GLYPH: Record<TermLine['kind'], string> = {
@@ -22,6 +26,8 @@ const GLYPH: Record<TermLine['kind'], string> = {
   sys: '·',
   user: '❯',
   uplink: '◉',
+  say: '›',
+  call: '>',
 };
 
 /** Types the line out character by character once, if it's fresh. */
@@ -43,7 +49,7 @@ function TypedText({ text, fresh, onProgress }: { text: string; fresh: boolean; 
   );
 }
 
-export function Terminal({ agentName, status, held, lines, onSubmit }: TerminalProps) {
+export function Terminal({ agentName, status, held, lines, onSubmit, link }: TerminalProps) {
   const bodyRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const stickRef = useRef(true);
@@ -110,13 +116,24 @@ export function Terminal({ agentName, status, held, lines, onSubmit }: TerminalP
           <i />
         </span>
         <span className="term__title">TTY · {agentName} · TOOL-CALL LOG</span>
-        <span className="term__state">{held ? 'PAUSED' : 'STREAMING'}</span>
+        {link && !held ? (
+          <span
+            className={`term__link term__link--${link.state}`}
+            title={link.state === 'polling' ? `Fallback: transcript polling (${link.reason ?? 'stream unavailable'})` : link.state === 'live' ? 'Live run stream (SSE)' : link.reason}
+            data-testid="term-link"
+          >
+            <i aria-hidden />
+            {LINK_LABEL[link.state]}
+          </span>
+        ) : (
+          <span className="term__state">{held ? 'PAUSED' : 'STREAMING'}</span>
+        )}
       </div>
       <div className="term__body" ref={bodyRef} onScroll={onScroll} onClick={() => inputRef.current?.focus()}>
         {lines.map((l, i) => {
           const fresh = i === lines.length - 1 && l.t > mountedAt.current - 1 && now - l.t < FRESH_MS;
           return (
-            <div key={l.id} className={`term__line term__line--${l.kind}`}>
+            <div key={l.id} className={`term__line term__line--${l.kind}${l.live ? ' term__line--live' : ''}`}>
               <span className="term__time">{new Date(l.t).toLocaleTimeString('en-GB', { hour12: false })}</span>
               {l.kind === 'cmd' || l.kind === 'user' ? (
                 <span className="term__prompt">{l.kind === 'user' ? 'cmdr@bridge:~$' : prompt}</span>
@@ -124,7 +141,14 @@ export function Terminal({ agentName, status, held, lines, onSubmit }: TerminalP
                 <span className="term__glyph">{GLYPH[l.kind]}</span>
               )}
               <span className="term__text">
-                <TypedText text={l.text} fresh={fresh} onProgress={scrollToEnd} />
+                {l.skey ? (
+                  <>
+                    {l.text}
+                    {l.live && <span className="term__caret term__caret--stream" />}
+                  </>
+                ) : (
+                  <TypedText text={l.text} fresh={fresh} onProgress={scrollToEnd} />
+                )}
               </span>
             </div>
           );

@@ -54,6 +54,11 @@ real orders.
 | ASSIGN MISSION / APPROVE PLAN (follow-up) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: 200 in under 1 s on a FINISHED agent, the agent went back to RUNNING and replied. APPROVE PLAN uses the same follow-up route, so it is covered by the same test. Heads-up: the API keeps reporting the old FINISHED status for 2 to 8 s after a follow-up; the board now holds the unit at RUNNING through that gap (code fix, builds green, not yet watched live in the browser) |
 | RETREAT (stop) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: stop on a RUNNING agent answered 200, the run ended about 6 s later without replying. v0 then reports the agent as FINISHED (not STOPPED). Stop on an already finished agent also answers 200 |
 | v1 API mode (`CURSOR_API_VERSION=v1`) | 🟡 Fake server only | Endpoints implemented, tested against the fake server only. **v0 is the default** |
+| LIVE RUN STREAMING: cockpit terminal streams a running agent (v1 SSE through the bridge) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06 with one throwaway agent (see the streaming sortie log below): events left the bridge as the run produced them, the cockpit showed **LIVE**, a tool-call line and the typing cursor, then closed the stream when the run finished. The agent's text arrived in one burst (the model wrote its short reply in one go), so token-by-token pacing was only seen on the fake server |
+| Stream resume after an early upstream `done` (`stream_unavailable` while CREATING) | 🟡 Fake server only | The real API did this once during the live test (the node test client reconnected by hand). The bridge now resumes on its own; that fix was written after the live run and is covered by the fake server only |
+| POLLING fallback (1 s transcript diff through the same stream route) | 🟡 Fake server only | Triggered on the fake server by a 410 `stream_expired`, a v1 404 and `?stream=poll`. Not seen on the real API, because v1 streaming worked for the real agent |
+| Live tool calls light fog-of-war tiles | 🟡 Fake server only | The real test agent touched no files, so only the fake server's `read` / `edit` events lit tiles |
+| Stream lifecycle: cockpit close aborts upstream, heartbeats, `Last-Event-ID` resume, stale-run guard after follow-ups | 🟡 Fake server only | 43 bridge checks + 24 browser checks against a fake SSE upstream. The real run did exercise the follow-up path (new run picked up, old run not replayed) |
 
 **Known limits of the hull:**
 
@@ -62,6 +67,8 @@ real orders.
 - **The command uplink needs a server.** The bridge only exists under `npm run dev` or `npm run preview`. Static builds are replay-only (`dist-demo/`), and a `dist/` folder on a static host has no uplink.
 - **HOLD only freezes the board.** The Cursor API has no pause, so a held cloud agent keeps running (and spending) in the cloud.
 - **Real orders cost real usage.** Launches and follow-ups spend Cursor credits. The v0 write paths have now flown against the real API (see the live sortie log below), but a summoned unit is a real agent with write access to the repo you point it at.
+- **Live streaming starts after the status poll.** The cockpit opens the stream once the unit reads RUNNING, so after a follow-up it goes LIVE a few seconds late (about 6 s in the live test). The stream replays the current run from its start, so nothing is lost.
+- **Live text pace is the model's pace.** The stream forwards text deltas as Cursor sends them. Shell output is not streamed (a tool call shows up when it starts and again when it ends), and short replies can arrive in one burst.
 - **Status lags behind orders.** After a follow-up or a stop the API takes a few seconds to report the new state. The board covers the follow-up gap; after RETREAT expect RUNNING for up to about 6 s before FINISHED.
 
 **Live sortie log (2026-10-06, v0, real Cursor API, throwaway agent on `meabs/AgentForce@main`):**
@@ -79,6 +86,20 @@ real orders.
 ![Live test: the throwaway test agent docked in the archive tray as FINISHED](media/live-test.png)
 
 <sub>▲ **LIVE SORTIE.** The throwaway "Fleet uplink test" agent, docked in the archive tray as FINISHED after its live run.</sub>
+
+**Streaming sortie log (2026-10-06, about 21:28 to 21:37 BST, real Cursor API, one throwaway agent on `meabs/AgentForce@main`, launched through the bridge with v0):**
+
+| Step | Result |
+|---|---|
+| `GET /v1/agents/{id}` on an agent that was launched with v0 | 200 with `latestRunId`. v1 works on v0 agents, so the bridge always streams through v1 |
+| `GET /v1/.../runs/{runId}/stream` on a run that finished hours earlier | 200, `X-Cursor-Stream-Retention-Seconds: 86400`, and the whole run is replayed at once (about 1,200 events), then `done`. This is why the bridge never replays a long finished run after a follow-up |
+| Launch `FLEET STREAM TEST` (count 1 to 10, then "Stream complete.") | 201 CREATING. `GET /api/agents/:id/stream` said `hello` (mode stream) 0.7 s later, then `status RUNNING`. All 23 text deltas arrived together (the model wrote its reply in one go); `result FINISHED` (13.3 s run) and `done` came about 11 s later |
+| Follow-up on the same agent: run one shell loop (`echo $i; sleep 3`, 10 times), then reply | Upstream first sent `CREATING`, `RUNNING`, then `error stream_unavailable` + `done` (the bridge now resumes after this). After reconnecting: the `run` tool call arrived at +6 s, its `completed` event 30 s later when the loop ended, then the reply text and `result FINISHED` (37.1 s run). The cockpit went **LIVE** about 6 s after the follow-up (the status poll has to see RUNNING first), printed `> run for i in 1 2 3 ...`, streamed the reply with the typing cursor, then printed `run FINISHED in 37.1 s` and closed the link |
+| Cleanup | Stopped through the bridge, then deleted by a one-off script that reads the key from `.env.local` without printing it. A v0 `DELETE` only archived the agent on v1, so it was also deleted through v1 (both APIs then answer 404). No branch and no PR appeared on GitHub, even though the run `result` named a planned `cursor/...` branch |
+
+![Live run streaming: CLOUD-JG35's cockpit mid-stream with the LIVE indicator, a tool-call line and the typing cursor](media/live-stream.png)
+
+<sub>▲ **LIVE RUN STREAM.** The real throwaway agent mid-run: red **LIVE** pulse in the terminal bar, the shell loop as an amber `>` tool-call line, and the reply still typing.</sub>
 
 ---
 
@@ -406,8 +427,27 @@ sees it.
 | `POST /api/agents/:id/followup` `{text}` | `POST /v0/agents/{id}/followup` | **ASSIGN MISSION**, **APPROVE PLAN**, free text in the console |
 | `POST /api/agents/:id/stop` | `POST /v0/agents/{id}/stop` | **RETREAT** (after a confirm dialog) |
 | `POST /api/agents` `{prompt, repo, ref}` | `POST /v0/agents` (with `target.autoCreatePr: false`) | **SUMMON** → LAUNCH CLOUD AGENT |
+| `GET /api/agents/:id/stream` (SSE) | `GET /v1/agents/{id}` + `GET /v1/agents/{id}/runs/{runId}/stream`, falling back to 1 s `GET /v0/agents/{id}/conversation` | **LIVE RUN STREAMING** into the open cockpit's terminal |
 
 Set `CURSOR_API_VERSION=v1` to fly on the newer runs-based API instead (`/v1/agents`, `/v1/agents/{id}/runs`, `.../runs/{runId}/cancel`). On v1 there is no transcript endpoint, so the terminal shows each run's status and final result instead of the full chat, and RETREAT cancels the active run for good (a follow-up starts a fresh run). v1 mode is implemented but has only been tested against a fake local API server, which is why v0 stays the default.
+
+### LIVE RUN STREAMING
+
+Open the cockpit of a real unit while it is running and its run streams into the terminal as it happens:
+
+- **Text** types out with a cursor (`›` lines), thinking shows as dim `●` lines.
+- **Tool calls** get their own amber `>` lines: `> read README.md`, `> edit src/App.tsx`, `> run npm test`. Files named by tool calls light up on the fog-of-war map straight away (edits count as edits).
+- **Status changes** reach the board at once, and the run ends with a `run FINISHED in 37.1 s` line.
+- The terminal bar shows a red pulsing **LIVE** on the v1 stream, amber **POLLING** on the fallback, **STANDBY** otherwise.
+
+How it works: the browser opens one `EventSource` on `GET /api/agents/:id/stream`. The bridge (`plugins/agentStream.ts`) looks up the agent's latest run on v1 (this works for agents launched with v0 as well) and proxies `GET /v1/agents/{id}/runs/{runId}/stream`, adding Basic auth on the server. It forwards text, thinking, tool-call, status, result and error events in one small format, and drops `interaction_update`. Tool calls are reduced to a verb, a short label and file paths, so raw file contents and command output never reach the browser. The bridge sends a heartbeat every 15 s, aborts the upstream request the moment the browser disconnects, resumes a dropped upstream stream with `Last-Event-ID`, and caps itself at 8 open streams. If v1 has no run for the agent, or the stream is expired (410) or keeps dropping, the same route switches to polling the v0 transcript every second and sends only the new text, so the frontend has a single code path.
+
+The stream closes when the cockpit closes or the run ends (it waits up to 10 s for the final text). While a cockpit is streaming, the 3 s transcript poll for that unit pauses so nothing prints twice. Add `?stream=poll` to the HUD URL (or set `CURSOR_STREAM_MODE=poll` for the bridge) to force the fallback.
+
+```bash
+# Watch a running agent's stream from the terminal (the bridge adds the key)
+curl -N http://127.0.0.1:5173/api/agents/bc-YOUR-AGENT-ID/stream
+```
 
 ### Orders on real units
 
@@ -436,7 +476,7 @@ No key? Every bridge route answers **503** `{"code":"NO_API_KEY","error":"Uplink
 
 - The bridge only answers loopback clients with a localhost `Host`, refuses cross-origin requests, and only accepts `application/json` POSTs, so other web pages can't fire orders through it.
 - Launches and follow-ups spend real Cursor usage. APPROVE PLAN is a single keypress, so mind the `P` key on real units.
-- Polling: list every ~15s, status every ~3s for active, focused or recently commanded units, transcript every ~3s for the open cockpit only.
+- Polling: list every ~15s, status every ~3s for active, focused or recently commanded units, transcript every ~3s for the open cockpit only (paused while that cockpit is LIVE streaming).
 - The bridge lives in the Vite dev and preview servers (`npm run dev` / `npm run preview`). A static `dist/` deploy has no uplink, and `dist-demo/` is replay-only.
 
 ```bash
@@ -479,12 +519,15 @@ src/
   hooks/useCursorLive.ts      polls cursor-live.json (under the app base) + state mapping
   hooks/useTerminalLogs.ts    per-unit streaming terminal transcripts
   hooks/useCloudAgents.ts     command uplink polling + launch / follow-up / stop
+  hooks/useLiveStream.ts      LIVE RUN STREAMING: one EventSource per open cockpit, retry / resume / drain
   lib/uplink.ts               browser client for /api/agents
+  lib/liveStream.ts           EventSource wrapper for /api/agents/:id/stream
   components/Dialogs.tsx      Summon + confirm dialogs
   data/mockAgents.ts          mock units, activity lines, feed events
   data/terminalScripts.ts     fake tool-call scripts + mission quick-picks
 plugins/cursorLiveApi.ts      Vite middleware: GET/POST /api/cursor-live
 plugins/cursorAgentsApi.ts    Vite middleware: /api/agents bridge to the Cursor Cloud Agents API
+plugins/agentStream.ts        SSE route for the bridge: v1 run stream proxy + transcript-diff fallback
 .env.example                  CURSOR_API_KEY template (copy to .env.local)
 media/
   demo.mp4                    the full Mission Replay recording (silent)
