@@ -10,6 +10,8 @@ interface CockpitProps {
   override: AgentOverride | undefined;
   lines: TermLine[];
   uplink: UplinkInfo;
+  /** Live run stream state for real units (LIVE / POLLING indicator) */
+  link?: { state: 'connecting' | 'live' | 'polling' | 'ended' | 'error'; reason?: string } | null;
   /** A command is in flight to the uplink */
   busy?: boolean;
   assignOpen: boolean;
@@ -42,6 +44,7 @@ export function Cockpit({
   override,
   lines,
   uplink,
+  link,
   busy,
   assignOpen,
   onAssignOpenChange,
@@ -190,6 +193,7 @@ export function Cockpit({
         held={held}
         lines={lines}
         onSubmit={onTerminalSubmit}
+        link={link}
       />
 
       {assignOpen && cloudId && (

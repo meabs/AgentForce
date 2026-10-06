@@ -29,7 +29,58 @@ export function useTerminalLogs(
   const tickRef = useRef(0);
 
   const push = useCallback((agentId: string, kind: TermKind, text: string) => {
-    setLogs((prev) => ({ ...prev, [agentId]: [...(prev[agentId] ?? []), mk(kind, text)].slice(-MAX_LINES) }));
+    setLogs((prev) => {
+      const lines = [...(prev[agentId] ?? [])];
+      const last = lines[lines.length - 1];
+      // A discrete line interrupts streamed text: seal it first (drop if empty).
+      if (last?.live) {
+        lines.pop();
+        if (last.text.trim()) lines.push({ ...last, live: false });
+      }
+      lines.push(mk(kind, text));
+      return { ...prev, [agentId]: lines.slice(-MAX_LINES) };
+    });
+  }, []);
+
+  /**
+   * Live stream text: appends a delta to the agent's current live line when it has the same
+   * stream key, splitting on newlines; otherwise seals the previous live line and starts a new one.
+   */
+  const stream = useCallback((agentId: string, kind: TermKind, delta: string, skey: string) => {
+    if (!delta) return;
+    setLogs((prev) => {
+      const lines = [...(prev[agentId] ?? [])];
+      const parts = delta.split('\n');
+      let last = lines[lines.length - 1];
+      const continuing = !!last && last.live === true && last.skey === skey;
+      if (!continuing && last?.live) lines[lines.length - 1] = { ...last, live: false };
+      parts.forEach((part, i) => {
+        last = lines[lines.length - 1];
+        if (i === 0 && continuing && last) {
+          lines[lines.length - 1] = { ...last, text: (last.text + part).slice(-4000) };
+          return;
+        }
+        if (i > 0 && last?.live) {
+          // newline: seal the line; drop it if it stayed empty
+          if (!last.text.trim()) lines.pop();
+          else lines[lines.length - 1] = { ...last, live: false };
+        }
+        lines.push({ ...mk(kind, part), live: true, skey });
+      });
+      return { ...prev, [agentId]: lines.slice(-MAX_LINES) };
+    });
+  }, []);
+
+  /** Ends the current live line (tool call, status change, stream closed). Empty live lines are dropped. */
+  const seal = useCallback((agentId: string) => {
+    setLogs((prev) => {
+      const lines = prev[agentId];
+      const last = lines?.[lines.length - 1];
+      if (!last?.live) return prev;
+      const next = lines.slice(0, -1);
+      if (last.text.trim()) next.push({ ...last, live: false });
+      return { ...prev, [agentId]: next };
+    });
   }, []);
 
   const clear = useCallback((agentId: string) => {
@@ -121,5 +172,5 @@ export function useTerminalLogs(
     return () => window.clearInterval(timer);
   }, []);
 
-  return { logs, push, clear };
+  return { logs, push, stream, seal, clear };
 }

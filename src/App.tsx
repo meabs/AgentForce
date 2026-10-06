@@ -22,6 +22,8 @@ import { useActivityTicker } from './hooks/useActivityTicker';
 import { mapCursorState, useCursorLive } from './hooks/useCursorLive';
 import { useTerminalLogs } from './hooks/useTerminalLogs';
 import { useCloudAgents } from './hooks/useCloudAgents';
+import { useLiveStream } from './hooks/useLiveStream';
+import type { LiveEvent } from './lib/liveStream';
 import { SummonDialog, ConfirmDialog, type ConfirmSpec } from './components/Dialogs';
 import { isCloudId, OFFLINE_MSG, type CloudAgent, type CloudMessage } from './lib/uplink';
 import type { ActivityEntry, Agent, AgentOverride, TermKind } from './types';
@@ -183,13 +185,26 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     },
     [unitIdOfCloud],
   );
+  /** Cloud id whose transcript is currently owned by the cockpit's live run stream. */
+  const liveIdRef = useRef<string | null>(null);
+  const isStreaming = useCallback((cid: string) => liveIdRef.current === cid, []);
   const cloud = useCloudAgents({
     extraIds: useMemo(() => (liveCloudId ? [liveCloudId] : []), [liveCloudId]),
     focusId: cloudIdOfUnit(cockpitId),
     heldIds: heldCloudIds,
     onMessages: onCloudMessages,
+    isStreaming,
   });
   const uplinkOnline = cloud.info.phase === 'online';
+  // LIVE RUN STREAMING: stream while a real unit's cockpit is open and the unit is running.
+  const cockpitCloudId = cloudIdOfUnit(cockpitId);
+  const streamActive =
+    !!cockpitCloudId &&
+    uplinkOnline &&
+    !heldCloudIds.has(cockpitCloudId) &&
+    !!cloud.agents[cockpitCloudId] &&
+    mapCursorState(cloud.agents[cockpitCloudId].status) === 'RUNNING';
+  liveIdRef.current = streamActive ? cockpitCloudId : null;
 
   const cloudUnits: Agent[] = useMemo(() => {
     const ids = [...cloud.summonedIds, ...cloud.listedIds].filter(
@@ -321,8 +336,99 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
   const history = useRunHistory(activeAgents);
   const cloudRuns = useMemo(() => Object.values(cloud.agents).map((a) => ({ ...a, callsign: callsignOf(a.id) })), [cloud.agents]);
 
-  const { logs, push: termPush, clear: termClear } = useTerminalLogs(agents, overrides, live);
+  const { logs, push: termPush, stream: termStream, seal: termSeal, clear: termClear } = useTerminalLogs(agents, overrides, live);
   termPushRef.current = termPush;
+
+  // LIVE RUN STREAMING: bridge SSE events -> terminal lines, board status, fog-of-war tiles.
+  const liveSeen = useRef<Record<string, { calls: Set<string>; history: boolean; status?: string }>>({});
+  const { noteStatus, primeConversation } = cloud;
+  const addLive = intel.addLive;
+  const onLiveEvent = useCallback(
+    (cid: string, e: LiveEvent) => {
+      const uid = unitIdOfCloud(cid);
+      const st = (liveSeen.current[cid] ??= { calls: new Set(), history: false });
+      switch (e.type) {
+        case 'hello':
+          termPush(
+            uid,
+            'uplink',
+            e.mode === 'stream'
+              ? `LIVE LINK · run ${e.runId ?? '?'} · streaming events`
+              : `POLLING · stream unavailable (${e.reason ?? 'unknown'}) · 1 s transcript diff`,
+          );
+          break;
+        case 'status':
+          noteStatus(cid, e.status);
+          // terminal statuses are reported by the `result` line
+          if (e.status !== st.status && mapCursorState(e.status) === 'RUNNING') {
+            st.status = e.status;
+            termPush(uid, 'uplink', `status → ${e.status}`);
+          }
+          break;
+        case 'assistant':
+          termStream(uid, 'say', e.text, e.msg !== undefined ? `say:${e.msg}` : 'say');
+          break;
+        case 'thinking':
+          termStream(uid, 'think', e.text, 'think');
+          break;
+        case 'tool': {
+          const t = e.tool;
+          if (!st.calls.has(t.callId)) {
+            st.calls.add(t.callId);
+            termPush(uid, 'call', t.label);
+          }
+          const paths = [...t.paths, ...(t.verb === 'run' ? extractPaths(t.label) : [])];
+          if (paths.length) addLive(cid, paths, t.verb === 'edit' || t.verb === 'delete' ? 'edit' : 'read');
+          break;
+        }
+        case 'user': {
+          const sent = sentRef.current[cid] ?? [];
+          const i = sent.indexOf(e.text.trim());
+          if (i >= 0) sent.splice(i, 1);
+          else termPush(uid, 'user', clip(e.text));
+          break;
+        }
+        case 'history':
+          if (st.history) break;
+          st.history = true;
+          termPush(uid, 'uplink', `transcript · last ${e.messages.length} of ${e.total} message${e.total === 1 ? '' : 's'}`);
+          e.messages.forEach((m, j) => {
+            if (!m.text.trim()) return;
+            // keep the transcript index as stream key so later deltas extend the same line
+            if (m.type === 'user') termPush(uid, 'user', clip(m.text));
+            else termStream(uid, 'say', m.text, `say:${e.total - e.messages.length + j}`);
+          });
+          break;
+        case 'result': {
+          termSeal(uid);
+          if (e.status) noteStatus(cid, e.status);
+          st.status = e.status;
+          const ok = !/ERROR|FAIL|CANCEL|EXPIRED/.test(e.status);
+          const secs = e.durationMs ? ` in ${(e.durationMs / 1000).toFixed(1)} s` : '';
+          // (result.git can name a branch that was never pushed, so only a PR link is shown)
+          termPush(uid, ok ? 'ok' : 'err', `run ${e.status}${secs}${e.prUrl ? ` · PR ${e.prUrl}` : ''}`);
+          break;
+        }
+        case 'error':
+          termPush(uid, e.fatal ? 'err' : 'warn', `${e.code}: ${e.message}`);
+          break;
+        case 'done':
+          termSeal(uid);
+          break;
+      }
+    },
+    [unitIdOfCloud, termPush, termStream, termSeal, noteStatus, addLive],
+  );
+  const onLiveClosed = useCallback(
+    (cid: string, reason: string) => {
+      const uid = unitIdOfCloud(cid);
+      termSeal(uid);
+      termPush(uid, 'sys', `live link closed · ${reason}`);
+      void primeConversation(cid);
+    },
+    [unitIdOfCloud, termSeal, termPush, primeConversation],
+  );
+  const liveLink = useLiveStream(cockpitCloudId, streamActive, onLiveEvent, onLiveClosed);
 
   // Terminal intel: file paths that simulated units print light up their tiles.
   const seenLine = useRef<Record<string, string>>({});
@@ -985,6 +1091,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
           agent={cockpitAgent}
           override={overrides[cockpitAgent.id]}
           lines={logs[cockpitAgent.id] ?? []}
+          link={cockpitAgent.cloudId ? (liveLink ?? { state: 'ended' }) : undefined}
           uplink={cloud.info}
           busy={busyIds.has(cockpitAgent.id)}
           assignOpen={assignOpen}

@@ -221,12 +221,35 @@ export function useRepoIntel(cloudAgents: Record<string, CloudAgent>, online: bo
     };
   }, [online]);
 
+  /** Paths reported live by tool-call events (LIVE RUN STREAMING), per agent. */
+  const [livePaths, setLivePaths] = useState<Record<string, { repoKey: string; repo: string; paths: string[] }>>({});
+  const liveQueue = useRef<{ id: string; repoKey: string; paths: string[]; kind: 'read' | 'edit'; at: number }[]>([]);
+  const [liveTick, setLiveTick] = useState(0);
+
+  const addLive = useCallback((id: string, paths: string[], kind: 'read' | 'edit' = 'read') => {
+    const a = agentsRef.current[id];
+    if (!a?.repo || !paths.length) return;
+    const repoKey = repoKeyOf(a.repo);
+    const repo = a.repo;
+    setLivePaths((p) => {
+      const cur = p[id]?.paths ?? [];
+      const merged = [...new Set([...cur, ...paths])];
+      return merged.length === cur.length ? p : { ...p, [id]: { repoKey, repo, paths: merged } };
+    });
+    liveQueue.current.push({ id, repoKey, paths, kind, at: Date.now() });
+    setLiveTick((n) => n + 1);
+  }, []);
+
   const territories: Territory[] = useMemo(() => {
     const byRepo: Record<string, { repo?: string; paths: Set<string> }> = {};
     for (const i of Object.values(intel)) {
       if (!i.repo) continue;
       const g = (byRepo[i.repoKey] ??= { repo: i.repo, paths: new Set() });
       i.paths.forEach((p) => g.paths.add(p));
+    }
+    for (const l of Object.values(livePaths)) {
+      const g = (byRepo[l.repoKey] ??= { repo: l.repo, paths: new Set() });
+      l.paths.forEach((p) => g.paths.add(p));
     }
     return Object.entries(byRepo)
       .map(([key, g]) => {
@@ -237,7 +260,23 @@ export function useRepoIntel(cloudAgents: Record<string, CloudAgent>, online: bo
       })
       .filter((t): t is Territory => !!t)
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [intel, trees]);
+  }, [intel, trees, livePaths]);
+
+  // live tool-call touches: light tiles as soon as the territory for that repo exists
+  useEffect(() => {
+    if (!liveQueue.current.length) return;
+    const keep: typeof liveQueue.current = [];
+    for (const q of liveQueue.current) {
+      const t = territories.find((x) => x.key === q.repoKey);
+      if (!t) {
+        if (Date.now() - q.at < 60_000) keep.push(q);
+        continue;
+      }
+      const resolved = q.paths.map((p) => resolvePath(t, p)).filter((p): p is string => !!p);
+      if (resolved.length) touch(t.key, resolved, { id: q.id, name: callsignOf(q.id) }, q.kind, q.at);
+    }
+    liveQueue.current = keep;
+  }, [territories, liveTick, touch]);
 
   // push real touches whenever intel or a repo tree lands
   const pushed = useRef<Record<string, string>>({});
@@ -259,5 +298,5 @@ export function useRepoIntel(cloudAgents: Record<string, CloudAgent>, online: bo
   }, [territories, intel, touch]);
 
   const totalTokens = useMemo(() => Object.values(intel).reduce((s, i) => s + i.tokens, 0), [intel]);
-  return { intel, territories, totalTokens };
+  return { intel, territories, totalTokens, addLive };
 }

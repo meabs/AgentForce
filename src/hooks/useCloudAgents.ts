@@ -14,6 +14,11 @@ const MAX_STATUS_PER_TICK = 6;
  * "mission complete".
  */
 const FOLLOWUP_GRACE_MS = 20_000;
+/**
+ * The live run stream reports the end of a run before v0 status catches up. After a stream said
+ * the run ended, ignore RUNNING from the status poll for this long (unless a follow-up was sent).
+ */
+const STREAM_FINAL_GRACE_MS = 15_000;
 
 export type UplinkPhase = 'checking' | 'online' | 'offline' | 'error';
 
@@ -33,15 +38,18 @@ interface Options {
   /** Cloud ids on a local board HOLD: no polling, no board updates. */
   heldIds: ReadonlySet<string>;
   onMessages: (cloudId: string, msgs: CloudMessage[], first: boolean) => void;
+  /** True while the cockpit's live run stream owns this agent's transcript (skip the 3 s transcript poll). */
+  isStreaming?: (cloudId: string) => boolean;
 }
 
 /**
  * Polls the local LIVE COMMAND UPLINK bridge (/api/agents/*):
  *  - list every ~15s (roster discovery + uplink health)
  *  - status every ~3s for active / focused / recently commanded units
- *  - conversation every ~3s for the cockpit-focused unit (new messages only)
+ *  - conversation every ~3s for the cockpit-focused unit (new messages only), except while the
+ *    cockpit's LIVE RUN STREAM (useLiveStream) is attached to it
  */
-export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Options) {
+export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStreaming }: Options) {
   const [info, setInfo] = useState<UplinkInfo>({ phase: 'checking' });
   const [agents, setAgents] = useState<Record<string, CloudAgent>>({});
   const [listedIds, setListedIds] = useState<string[]>([]);
@@ -51,8 +59,8 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
   agentsRef.current = agents;
   const infoRef = useRef(info);
   infoRef.current = info;
-  const optsRef = useRef({ extraIds, focusId, heldIds, onMessages });
-  optsRef.current = { extraIds, focusId, heldIds, onMessages };
+  const optsRef = useRef({ extraIds, focusId, heldIds, onMessages, isStreaming });
+  optsRef.current = { extraIds, focusId, heldIds, onMessages, isStreaming };
   const listedRef = useRef<string[]>([]);
   const summonedRef = useRef<string[]>([]);
   const touchedRef = useRef<Record<string, number>>({});
@@ -63,6 +71,10 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
   const busyRef = useRef(false);
   /** id -> time a follow-up was accepted; stale terminal statuses are ignored until RUNNING is seen. */
   const pendingRunRef = useRef<Record<string, number>>({});
+  /** Ids whose transcript a live stream has shown: their first transcript pull is silent. */
+  const streamedRef = useRef<Set<string>>(new Set());
+  /** id -> time the live stream reported a terminal status. */
+  const streamFinalRef = useRef<Record<string, number>>({});
 
   const noteFailure = useCallback((r: Extract<UplinkResult<unknown>, { ok: false }>) => {
     if (r.status === 503 || r.code === 'NO_API_KEY') {
@@ -79,6 +91,12 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
       const st = mapCursorState(a.status);
       if (st === 'RUNNING' || st === 'BLOCKED' || Date.now() - pendingAt > FOLLOWUP_GRACE_MS) delete pendingRunRef.current[a.id];
       else a = { ...a, status: 'RUNNING' }; // upstream hasn't caught up with the new run yet
+    }
+    const finAt = streamFinalRef.current[a.id];
+    if (finAt && !pendingRunRef.current[a.id]) {
+      const cur = agentsRef.current[a.id];
+      if (Date.now() - finAt >= STREAM_FINAL_GRACE_MS) delete streamFinalRef.current[a.id];
+      else if (mapCursorState(a.status) === 'RUNNING' && cur) a = { ...a, status: cur.status };
     }
     setAgents((prev) => {
       const old = prev[a.id];
@@ -120,7 +138,11 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
   );
 
   const pullConversation = useCallback(
-    async (id: string) => {
+    async (id: string, silent = false) => {
+      if (!silent && optsRef.current.isStreaming?.(id)) {
+        streamedRef.current.add(id);
+        return;
+      }
       const r = await uplink.conversation(id);
       if (!r.ok) {
         if (r.status === 404) goneRef.current.add(id);
@@ -133,6 +155,8 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
       const fresh = r.data.messages.filter((m) => !set.has(m.id));
       fresh.forEach((m) => set.add(m.id));
       seenRef.current[id] = set;
+      // the live stream already showed it (also covers a poll that raced the stream's close)
+      if (silent || optsRef.current.isStreaming?.(id) || (first && streamedRef.current.has(id))) return;
       if (fresh.length || first) optsRef.current.onMessages(id, fresh, first);
     },
     [noteFailure],
@@ -184,6 +208,29 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
       void pullConversation(focusId);
   }, [focusId, heldIds, pullConversation]);
 
+  /** A live stream reported a status change: reflect it on the board now instead of at the next poll. */
+  const noteStatus = useCallback(
+    (id: string, status: string) => {
+      const a = agentsRef.current[id];
+      if (!a || !status || a.status === status) return;
+      if (mapCursorState(status) !== 'RUNNING') {
+        delete pendingRunRef.current[id];
+        streamFinalRef.current[id] = Date.now();
+      } else delete streamFinalRef.current[id];
+      upsert({ ...a, status, updatedAt: new Date().toISOString() });
+    },
+    [upsert],
+  );
+
+  /** After a live stream closes: mark the transcript as seen so the poll doesn't print it twice. */
+  const primeConversation = useCallback(
+    (id: string) => {
+      streamedRef.current.add(id);
+      return pullConversation(id, true);
+    },
+    [pullConversation],
+  );
+
   const touch = useCallback((id: string) => {
     touchedRef.current[id] = Date.now();
   }, []);
@@ -216,6 +263,7 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
       }
       touch(id);
       pendingRunRef.current[id] = Date.now();
+      delete streamFinalRef.current[id];
       const a = agentsRef.current[id];
       if (a) upsert({ ...a, status: 'RUNNING', updatedAt: new Date().toISOString() });
       window.setTimeout(() => void refresh(id), 1200);
@@ -239,5 +287,5 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
     [noteFailure, touch, refresh],
   );
 
-  return { info, agents, listedIds, summonedIds, launch, followup, stop, refresh };
+  return { info, agents, listedIds, summonedIds, launch, followup, stop, refresh, noteStatus, primeConversation };
 }

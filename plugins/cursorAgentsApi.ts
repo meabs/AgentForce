@@ -1,6 +1,7 @@
 import type { Plugin, Connect } from 'vite';
 import { loadEnv } from 'vite';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { handleAgentStream } from './agentStream.ts';
 
 /**
  * LIVE COMMAND UPLINK: server-side bridge to the Cursor Cloud Agents API.
@@ -19,6 +20,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
  *   GET  /api/agents/:id/conversation   transcript              -> { id, messages: MessageDTO[] }
  *   POST /api/agents/:id/followup {text}  follow-up (Assign)    -> { ok, id, runId? }
  *   POST /api/agents/:id/stop           stop / cancel (Retreat) -> { ok, id }
+ *   GET  /api/agents/:id/stream         LIVE RUN STREAM (text/event-stream, see plugins/agentStream.ts)
+ *        ?mode=poll forces the transcript-diff fallback; ?lastEventId=&runId= resumes a v1 run stream
  *
  * Upstream: legacy v0 by default (has a full conversation endpoint and a resumable stop);
  * set CURSOR_API_VERSION=v1 to use the current runs-based v1 surface instead.
@@ -363,6 +366,27 @@ async function route(env: Env, req: IncomingMessage, res: ServerResponse, url: U
     return send(res, 200, { ok: true, id, ...(await api.followup(env, id, text)) });
   }
   if (action === 'stop' && method === 'POST') return send(res, 200, { ok: true, id, ...(await api.stop(env, id)) });
+  if (action === 'stream' && method === 'GET') {
+    const mode = url.searchParams.get('mode');
+    const lastEventId = (url.searchParams.get('lastEventId') ?? String(req.headers['last-event-id'] ?? '')).slice(0, 200);
+    const runId = (url.searchParams.get('runId') ?? '').slice(0, 200);
+    return handleAgentStream(
+      req,
+      res,
+      id,
+      {
+        base: env.base,
+        auth: 'Basic ' + Buffer.from(`${env.key}:`).toString('base64'),
+        conversation: (aid) => api.conversation(env, aid),
+        status: (aid) => api.get(env, aid),
+      },
+      {
+        forceMode: mode === 'poll' || process.env.CURSOR_STREAM_MODE === 'poll' ? 'poll' : undefined,
+        lastEventId: lastEventId && /^[\w:.-]+$/.test(lastEventId) ? lastEventId : undefined,
+        lastRunId: /^[\w-]+$/.test(runId) ? runId : undefined,
+      },
+    );
+  }
   throw new HttpError(404, 'NOT_FOUND', 'unknown route');
 }
 
