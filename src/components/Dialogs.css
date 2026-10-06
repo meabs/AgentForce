@@ -101,3 +101,41 @@
 
 @keyframes dlg-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dlg-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+
+/* ---------- usability pass: readable form, inline validation */
+.dlg { text-transform: none; max-height: calc(100dvh - 24px); overflow: auto; }
+.dlg__tag { display: inline-flex; align-items: center; gap: 8px; text-transform: uppercase; }
+.dlg__rts { font-style: normal; font-size: 9px; letter-spacing: 0.2em; opacity: 0.6; border: 1px solid currentColor; padding: 0 4px; }
+.dlg__uplink { font-size: 12px; letter-spacing: 0.04em; }
+.dlg__field > span { font-size: 12px; letter-spacing: 0.06em; color: #a9dcef; }
+.dlg__field > span i { color: var(--amber); font-style: normal; }
+.dlg__field textarea,
+.dlg__field input,
+.dlg__field select { font-size: 14px; }
+.dlg__field select {
+  width: 100%;
+  padding: 7px 9px;
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  background: rgba(0, 12, 18, 0.95);
+  color: #e8fbff;
+  font-family: var(--font-mono);
+}
+.dlg__field select:disabled { opacity: 0.55; }
+.dlg__field [aria-invalid='true'] { border-color: #ff6f8c; box-shadow: 0 0 0 2px rgba(224, 64, 96, 0.25); }
+.dlg__field--ref { width: 170px; }
+.dlg__msg { display: block; font-size: 11px; color: #8fbfd0; min-height: 14px; }
+.dlg__msg--err { color: #ff9fb2; }
+.dlg__msg--warn { margin: 8px 0 0; color: #ffcf6e; text-align: right; }
+.dlg__error { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.dlg__note { font-size: 12px; color: #a9cfdd; }
+.dlg__body { font-size: 13px; }
+.dlg-btn { font: 700 12px var(--font-mono); letter-spacing: 0.04em; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; }
+.dlg-btn kbd { font-size: 9px; }
+.dlg__x { font-size: 16px; min-width: 32px; min-height: 32px; }
+@media (max-width: 640px) {
+  .dlg__row { flex-direction: column; gap: 0; }
+  .dlg__field--ref { width: 100%; }
+  .dlg__actions { flex-direction: column-reverse; }
+  .dlg__actions .dlg-btn { width: 100%; justify-content: center; }
+  .dlg-btn kbd { display: none; }
+}

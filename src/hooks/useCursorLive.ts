@@ -19,9 +19,10 @@ export function mapCursorState(state: string | undefined): AgentStatus {
   const s = (state ?? '').trim().toUpperCase();
   if (['CREATING', 'PENDING', 'QUEUED', 'STARTING', 'RUNNING', 'IN_PROGRESS', 'ACTIVE', 'WORKING'].includes(s))
     return 'RUNNING';
-  if (['FAILED', 'ERROR', 'ERRORED', 'BLOCKED', 'CANCELLED', 'CANCELED', 'EXPIRED', 'TIMEOUT', 'NEEDS_INPUT', 'AWAITING_APPROVAL'].includes(s))
+  if (['FAILED', 'ERROR', 'ERRORED', 'BLOCKED', 'TIMEOUT', 'NEEDS_INPUT', 'AWAITING_APPROVAL'].includes(s))
     return 'BLOCKED';
-  // FINISHED, COMPLETED, DONE, SUCCEEDED, STOPPED, IDLE, …
+  // FINISHED, COMPLETED, DONE, SUCCEEDED, STOPPED, CANCELLED, EXPIRED, IDLE, …
+  // (EXPIRED / CANCELLED are over, not broken: they used to show red and could fire a false alarm.)
   return 'IDLE';
 }
 

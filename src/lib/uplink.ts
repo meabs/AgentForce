@@ -74,6 +74,42 @@ export const uplink = {
   followup: (id: string, text: string) =>
     call<{ ok: true; id: string; runId?: string }>('POST', `/api/agents/${enc(id)}/followup`, { text }),
   stop: (id: string) => call<{ ok: true; id: string }>('POST', `/api/agents/${enc(id)}/stop`, {}),
-  launch: (prompt: string, repo: string, ref: string) =>
-    call<{ apiVersion: string; agent: CloudAgent }>('POST', '/api/agents', { prompt, repo, ref }, 45_000),
+  launch: (prompt: string, repo: string, ref: string, model?: string) =>
+    call<{ apiVersion: string; agent: CloudAgent }>('POST', '/api/agents', { prompt, repo, ref, ...(model ? { model } : {}) }, 45_000),
+  models: () => call<{ apiVersion: string; models: string[] }>('GET', '/api/models'),
 };
+
+/** Turn a bridge / API failure into a sentence a human can act on. */
+export function friendlyError(r: { status: number; code: string; error: string }): string {
+  if (r.code === 'STATIC_DEMO') return 'Not available in the static demo (no server, no API key).';
+  if (r.status === 503 || r.code === 'NO_API_KEY') return 'Not connected: add CURSOR_API_KEY to .env.local (the bridge picks it up within seconds).';
+  if (r.status === 401) return 'Cursor rejected the API key (401). Check CURSOR_API_KEY in .env.local.';
+  if (r.status === 403) return `Forbidden (403): ${r.error}`;
+  if (r.status === 404) return 'Not found (404): the agent no longer exists.';
+  if (r.status === 409) return `Conflict (409): ${r.error}. The agent may be busy, or already stopped.`;
+  if (r.status === 429) return 'Rate limited by the Cursor API (429). Wait a minute and try again.';
+  if (r.status === 504 || r.code === 'UPSTREAM_TIMEOUT') return 'The Cursor API timed out. Try again.';
+  if (r.status === 0 || r.code === 'NETWORK') return `Cannot reach the local bridge (${r.error}). Is npm run dev still running?`;
+  if (r.code === 'BAD_REPO') return 'Repository must be a full https URL, for example https://github.com/owner/repo.';
+  if (r.code === 'BAD_REF') return 'Branch or ref must not contain spaces.';
+  if (r.code === 'BAD_MODEL') return 'That model id is not valid.';
+  if (r.code === 'PROMPT_REQUIRED' || r.code === 'TEXT_REQUIRED') return 'Write a prompt first.';
+  return `${r.status ? `HTTP ${r.status}: ` : ''}${r.error}`;
+}
+
+/** Accepts owner/repo, github.com/owner/repo or a full URL. Returns a normalised https URL or an error. */
+export function normaliseRepo(input: string): { url?: string; error?: string } {
+  const v = input.trim();
+  if (!v) return { error: 'Repository is required.' };
+  if (/^[\w-]+\/[\w.-]+$/.test(v)) return { url: `https://github.com/${v.replace(/\.git$/, '')}` };
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(withScheme);
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return { error: 'Use an https:// repository URL.' };
+    if (u.username || u.password) return { error: 'Do not put credentials in the URL.' };
+    if (u.pathname.replace(/\/+$/, '').split('/').filter(Boolean).length < 2) return { error: 'Expected owner/repo, e.g. https://github.com/owner/repo.' };
+    return { url: `${u.origin}${u.pathname.replace(/\/+$/, '').replace(/\.git$/, '')}` };
+  } catch {
+    return { error: 'Not a valid repository URL.' };
+  }
+}

@@ -131,3 +131,22 @@
   .top-bar__right { display: none; }
   .top-bar { grid-template-columns: 1fr; justify-items: center; }
 }
+
+/* ---------- usability pass: controls on both sides of the banner */
+.top-bar--controls .top-bar__left { pointer-events: auto; display: flex; align-items: center; gap: 6px; }
+.top-bar__right { pointer-events: auto; }
+@media (max-width: 1279px) {
+  .top-bar--controls { grid-template-columns: auto 1fr auto; gap: 8px; }
+  .top-bar--controls .top-bar__left { display: flex; }
+}
+@media (max-width: 640px) {
+  .top-bar--controls {
+    height: auto;
+    min-height: 50px;
+    grid-template-columns: auto auto;
+    justify-content: space-between;
+    padding: calc(6px + env(safe-area-inset-top)) 8px 6px;
+  }
+  .top-bar--controls .mission-banner { display: none; }
+  .top-bar--controls .top-bar__right { display: block; }
+}

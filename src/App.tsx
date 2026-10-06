@@ -24,8 +24,15 @@ import { useTerminalLogs } from './hooks/useTerminalLogs';
 import { useCloudAgents } from './hooks/useCloudAgents';
 import { useLiveStream } from './hooks/useLiveStream';
 import type { LiveEvent } from './lib/liveStream';
-import { SummonDialog, ConfirmDialog, type ConfirmSpec } from './components/Dialogs';
-import { isCloudId, OFFLINE_MSG, type CloudAgent, type CloudMessage } from './lib/uplink';
+import { SummonDialog, ConfirmDialog, type ConfirmSpec, type LaunchSpec } from './components/Dialogs';
+import { FleetTable } from './components/FleetTable';
+import { FilterBar } from './components/FilterBar';
+import { ConnectionNotice } from './components/ConnectionNotice';
+import { HelpOverlay } from './components/HelpOverlay';
+import { Toasts, type ToastItem, type ToastTone } from './components/Toasts';
+import type { ConvoState } from './components/Cockpit';
+import { countsOf, EMPTY_FILTER, filterActive, isReal, matches, plainStatus, repoShort, type FleetFilter } from './lib/agentView';
+import { DEFAULT_REPO, friendlyError, isCloudId, OFFLINE_MSG, uplink, type CloudAgent, type CloudMessage } from './lib/uplink';
 import type { ActivityEntry, Agent, AgentOverride, TermKind } from './types';
 import './App.css';
 
@@ -41,6 +48,10 @@ const TERMINAL_RE = /^(FINISHED|COMPLETED|COMPLETE|DONE|SUCCEEDED|SUCCESS|EXPIRE
 /** A finished summoned unit lingers on the roster this long (victory lap) before docking in the archive. */
 const DOCK_AFTER_MS = 45_000;
 const ARCHIVE_KEY = 'afc.archive.v1';
+const VIEW_KEY = 'afc.view.v1';
+const SOURCE_KEY = 'afc.source.v1';
+const REPOS_KEY = 'afc.repos.v1';
+
 
 function loadJson<T>(key: string, fallback: T): T {
   try {
@@ -108,16 +119,34 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
   const [summonError, setSummonError] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(new Set());
-  const [toast, setToast] = useState<{ text: string; tone: 'amber' | 'green' | 'red' } | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const toastSeq = useRef(0);
+  const [view, setView] = useState<'map' | 'list'>(() => (loadJson<string>(VIEW_KEY, 'map') === 'list' ? 'list' : 'map'));
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [filter, setFilter] = useState<FleetFilter>(() => ({ ...EMPTY_FILTER, source: loadJson<FleetFilter['source']>(SOURCE_KEY, 'all') }));
+  const [convo, setConvo] = useState<Record<string, CloudMessage[]>>({});
+  const [convoState, setConvoState] = useState<Record<string, ConvoState>>({});
+  const [models, setModels] = useState<string[] | null>(null);
+  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [recentRepos, setRecentRepos] = useState<string[]>(() => loadJson<string[]>(REPOS_KEY, []));
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem(VIEW_KEY, JSON.stringify(view));
+      localStorage.setItem(SOURCE_KEY, JSON.stringify(filter.source));
+      localStorage.setItem(REPOS_KEY, JSON.stringify(recentRepos.slice(0, 8)));
+    } catch {
+      /* ignore */
+    }
+  }, [view, filter.source, recentRepos]);
   const [approvals, setApprovals] = useState(0);
   const [tick, setTick] = useState(0);
   const summonCount = useRef(0);
-  const toastTimer = useRef<number | undefined>(undefined);
   const [now, setNow] = useState(() => Date.now());
   const [territoryOpen, setTerritoryOpen] = useState(false);
   const [warRoomOpen, setWarRoomOpen] = useState(false);
   const [pending, setPending] = useState<Agent[]>([]);
-  const [lastLaunch, setLastLaunch] = useState<{ prompt: string; repo: string; ref: string } | undefined>();
+  const [lastLaunch, setLastLaunch] = useState<LaunchSpec | undefined>();
   const [arriving, setArriving] = useState<ReadonlySet<string>>(new Set());
   const [bursts, setBursts] = useState<Record<string, 'done' | 'alert'>>({});
   /** Board-only archive: manual parks + explicit recalls (persisted) */
@@ -162,6 +191,8 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     (cid: string, msgs: CloudMessage[], first: boolean) => {
       const uid = unitIdOfCloud(cid);
       const push = termPushRef.current;
+      setConvo((c) => ({ ...c, [cid]: first ? msgs : [...(c[cid] ?? []), ...msgs] }));
+      setConvoState((c) => ({ ...c, [cid]: { status: 'ok' } }));
       let show = msgs;
       if (first) {
         push(uid, 'uplink', `transcript linked · ${msgs.length} message${msgs.length === 1 ? '' : 's'} on record`);
@@ -193,6 +224,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     focusId: cloudIdOfUnit(cockpitId),
     heldIds: heldCloudIds,
     onMessages: onCloudMessages,
+    onConversationError: useCallback((cid: string, error: string) => setConvoState((c) => ({ ...c, [cid]: { status: 'error', error } })), []),
     isStreaming,
   });
   const uplinkOnline = cloud.info.phase === 'online';
@@ -333,6 +365,18 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     window.setTimeout(() => setArriving(new Set()), 1400);
   }, []);
   const archivedIds = useMemo(() => new Set(archivedUnits.map((u) => u.id)), [archivedUnits]);
+  /** Board-only bulk archive (and its undo). */
+  const parkMany = useCallback((ids: string[], on: boolean) => {
+    setArchiveState((p) => {
+      const parked = { ...p.parked };
+      for (const id of ids) {
+        if (on) parked[id] = Date.now();
+        else delete parked[id];
+      }
+      const set = new Set(ids);
+      return { parked, recalled: on ? p.recalled.filter((x) => !set.has(x)) : [...p.recalled.filter((x) => !set.has(x)), ...ids].slice(-80) };
+    });
+  }, []);
   const history = useRunHistory(activeAgents);
   const cloudRuns = useMemo(() => Object.values(cloud.agents).map((a) => ({ ...a, callsign: callsignOf(a.id) })), [cloud.agents]);
 
@@ -486,11 +530,15 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
   const missionProgress = Math.min(100, 62 + (tick % 6) + approvals * 3);
 
   // ---------- helpers ----------
-  const flash = useCallback((text: string, tone: 'amber' | 'green' | 'red' = 'amber') => {
-    window.clearTimeout(toastTimer.current);
-    setToast({ text, tone });
-    toastTimer.current = window.setTimeout(() => setToast(null), tone === 'red' ? 4000 : 2400);
-  }, []);
+  const dismissToast = useCallback((id: number) => setToasts((t) => t.filter((x) => x.id !== id)), []);
+  const flash = useCallback(
+    (text: string, tone: ToastTone = 'amber', action?: ToastItem['action']) => {
+      const id = ++toastSeq.current;
+      setToasts((t) => [...t.slice(-2), { id, text, tone, action }]);
+      window.setTimeout(() => dismissToast(id), action ? 8000 : tone === 'red' ? 6000 : 3200);
+    },
+    [dismissToast],
+  );
 
   const feedLog = useCallback((agentName: string, message: string, kind: ActivityEntry['kind']) => {
     setActionFeed((prev) =>
@@ -539,6 +587,28 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       }
     }
   }, [cloud.agents, unitIdOfCloud, termPush, feedLog, burst]);
+
+  const archiveToggle = useCallback(
+    (id: string) => {
+      const a = agentsRef.current.find((x) => x.id === id);
+      const wasArchived = archivedIds.has(id);
+      if (wasArchived) recallUnit(id);
+      else toggleArchive(id);
+      flash(
+        wasArchived ? `Restored ${a?.name ?? id} to the roster` : `Archived ${a?.name ?? id} (board only, nothing sent to Cursor)`,
+        'amber',
+        { label: 'Undo', run: () => (wasArchived ? parkMany([id], true) : parkMany([id], false)) },
+      );
+    },
+    [archivedIds, recallUnit, toggleArchive, flash, parkMany],
+  );
+  const archiveFinished = useCallback(() => {
+    const ids = activeAgents.filter((a) => isReal(a) && !a.pending && plainStatus(a).group === 'done').map((a) => a.id);
+    if (!ids.length) return;
+    parkMany(ids, true);
+    sfx.tick();
+    flash(`Archived ${ids.length} finished agent${ids.length === 1 ? '' : 's'} (board only)`, 'amber', { label: 'Undo', run: () => parkMany(ids, false) });
+  }, [activeAgents, parkMany, flash]);
 
   const patch = useCallback((id: string, fn: (o: AgentOverride) => AgentOverride) => {
     setOverrides((prev) => ({ ...prev, [id]: fn(prev[id] ?? {}) }));
@@ -687,7 +757,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       if (r.ok) {
         termPush(id, 'ok', `${label} transmitted · agent re-engaging`);
         feedLog(a.name, `${label} → cloud agent`, 'ok');
-        flash(`⇪ ${label.toUpperCase()} → ${a.name}`, 'green');
+        flash(`Follow-up sent to ${a.name}. It is working again.`, 'green');
         sfx.ack();
         say(VOICE.orders);
         return true;
@@ -699,7 +769,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       termPush(id, 'err', `${label} failed · ${r.status ? `HTTP ${r.status} · ` : ''}${r.error}`);
       if (r.status === 409) termPush(id, 'sys', 'agent busy: wait for the current run to finish, or RETREAT it first');
       feedLog(a.name, `${label} FAILED: ${r.error}`, 'warn');
-      flash(`✗ ${label.toUpperCase()} FAILED · ${r.error}`, 'red');
+      flash(`Follow-up to ${a.name} failed. ${friendlyError(r)}`, 'red');
       sfx.error();
       return false;
     },
@@ -723,14 +793,44 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     [cloud.info.phase, localAssign, offlineFallback, sendFollowup, termPush, patch],
   );
 
+  /** Detail-panel composer: resolves true when Cursor accepted the follow-up (so the box can clear). */
+  const actSendFollowup = useCallback(
+    async (id: string, text: string) => {
+      const a = agentsRef.current.find((x) => x.id === id);
+      if (!a?.cloudId) return false;
+      if (cloud.info.phase === 'offline') {
+        flash(friendlyError({ status: 503, code: 'NO_API_KEY', error: OFFLINE_MSG }), 'red');
+        return false;
+      }
+      termPush(id, 'user', text);
+      const ok = await sendFollowup(id, text, 'follow-up');
+      if (ok) patch(id, (p) => ({ ...p, mission: p.mission ?? a.mission }));
+      return ok;
+    },
+    [cloud.info.phase, flash, termPush, sendFollowup, patch],
+  );
+
   const actApprove = useCallback(
     (id: string) => {
       const a = agentsRef.current.find((x) => x.id === id);
       if (!a) return;
       if (!a.cloudId) return localApprove(id);
       if (cloud.info.phase === 'offline') return offlineFallback(id, 'approval', () => localApprove(id));
-      termPush(id, 'user', 'Approved, proceed.');
-      void sendFollowup(id, 'Approved, proceed.', 'plan approval').then((ok) => ok && setApprovals((n) => n + 1));
+      setConfirm({
+        title: `APPROVE PLAN · ${a.name}?`,
+        tone: 'amber',
+        confirmLabel: 'Send "Approved, proceed."',
+        body: (
+          <>
+            This sends the follow-up <b>“Approved, proceed.”</b> to cloud agent <code>{a.cloudId}</code>. The agent starts a new run, which uses
+            your Cursor usage.
+          </>
+        ),
+        onConfirm: () => {
+          termPush(id, 'user', 'Approved, proceed.');
+          void sendFollowup(id, 'Approved, proceed.', 'plan approval').then((ok) => ok && setApprovals((n) => n + 1));
+        },
+      });
     },
     [cloud.info.phase, localApprove, offlineFallback, sendFollowup, termPush],
   );
@@ -748,7 +848,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         termPush(id, 'warn', 'RETREAT · stop order acknowledged by the cloud agent');
         termPush(id, 'sys', 'send a follow-up (ASSIGN) to put it back to work');
         feedLog(a.name, 'RETREAT · cloud agent stopped', 'warn');
-        flash(`■ RETREAT → ${a.name} · STOPPED`, 'red');
+        flash(`Stop sent to ${a.name}. Cursor may show it as running for a few more seconds.`, 'amber');
         sfx.retreat();
         say(VOICE.retreat);
       } else if (r.status === 503) {
@@ -757,7 +857,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         termPush(id, 'err', `stop failed · ${r.status ? `HTTP ${r.status} · ` : ''}${r.error}`);
         if (r.status === 409) termPush(id, 'sys', 'nothing to stop: the agent is not currently running');
         feedLog(a.name, `RETREAT FAILED: ${r.error}`, 'warn');
-        flash(`✗ STOP FAILED · ${r.error}`, 'red');
+        flash(`Could not stop ${a.name}. ${friendlyError(r)}`, 'red');
         sfx.error();
       }
     },
@@ -772,9 +872,9 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       if (cloud.info.phase === 'offline') return offlineFallback(id, 'stop', () => localRetreat(id));
       const v1 = cloud.info.apiVersion === 'v1';
       setConfirm({
-        title: `■ RETREAT ${a.name}?`,
+        title: `STOP ${a.name}? (RETREAT)`,
         tone: 'red',
-        confirmLabel: 'STOP CLOUD AGENT',
+        confirmLabel: 'Stop agent',
         body: (
           <>
             This sends a real <b>stop</b> order to cloud agent <code>{a.cloudId}</code>.
@@ -792,7 +892,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
 
   const launchSeq = useRef(0);
   const actLaunch = useCallback(
-    async (prompt: string, repo: string, ref: string) => {
+    async ({ prompt, repo, ref, model }: LaunchSpec) => {
       // Instant feedback: a RUNNING placeholder warps in while the API call is in flight.
       const ghostId = `warp-${++launchSeq.current}`;
       const ghost: Agent = {
@@ -812,22 +912,23 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       };
       setSummonBusy(true);
       setSummonError(null);
-      setLastLaunch({ prompt, repo, ref });
+      setLastLaunch({ prompt, repo, ref, model });
+      setRecentRepos((r) => [repo, ...r.filter((x) => x !== repo)].slice(0, 8));
       setSummonOpen(false);
       setPending((p) => [...p, ghost]);
       setSelectedId(ghostId);
       setArriving(new Set([ghostId]));
       sfx.warp();
       window.setTimeout(() => termPush(ghostId, 'uplink', `uplink.launch(${repo.replace(/^https?:\/\//, '')}@${ref}) · awaiting agent id…`), 40);
-      const r = await cloud.launch(prompt, repo, ref);
+      const r = await cloud.launch(prompt, repo, ref, model);
       setSummonBusy(false);
       if (!r.ok) {
-        const msg = r.status === 503 ? OFFLINE_MSG : `${r.status ? `HTTP ${r.status} · ` : ''}${r.error}`;
+        const msg = friendlyError(r);
         setSummonError(msg);
         setPending((p) => p.map((g) => (g.id === ghostId ? { ...g, status: 'BLOCKED', activity: `Launch failed · ${msg}`, hp: 0 } : g)));
         window.setTimeout(() => setPending((p) => p.filter((g) => g.id !== ghostId)), 6000);
         feedLog('UPLINK', `launch failed: ${msg}`, 'warn');
-        flash(`✗ LAUNCH FAILED · ${msg} · S to retry`, 'red');
+        flash(`Launch failed. ${msg}`, 'red', { label: 'Edit & retry', run: () => setSummonOpen(true) });
         sfx.klaxon();
         return;
       }
@@ -849,7 +950,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         if (a.url) termPush(a.id, 'sys', a.url);
       }, 60);
       feedLog(name, `SUMMONED via uplink · ${clip(a.name || prompt, 60)}`, 'ok');
-      flash(`▲ LAUNCHED ${name} · RUNNING`, 'green');
+      flash(`Launched ${name} on ${repoShort(repo)}. Details are open on the right.`, 'green');
     },
     [cloud, termPush, feedLog, flash, noteSent],
   );
@@ -892,6 +993,59 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     sfx.tick();
     setSummonOpen(true);
   }, []);
+
+  // Model list for the launch form (read-only GET, cached by the bridge). Fetched when the form opens.
+  useEffect(() => {
+    if (!summonOpen || cloud.info.phase !== 'online' || (models && !modelsError)) return;
+    let alive = true;
+    setModels(null);
+    void uplink.models().then((r) => {
+      if (!alive) return;
+      if (r.ok) {
+        setModels(r.data.models);
+        setModelsError(null);
+      } else {
+        setModels([]);
+        setModelsError(friendlyError(r));
+      }
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summonOpen, cloud.info.phase]);
+
+  // Conversation loading state for the unit open in the detail panel.
+  const focusCid = cloudIdOfUnit(cockpitId);
+  useEffect(() => {
+    if (focusCid && !convoState[focusCid] && cloud.info.phase === 'online') setConvoState((c) => ({ ...c, [focusCid]: { status: 'loading' } }));
+  }, [focusCid, convoState, cloud.info.phase]);
+
+  // ---------- search / filter ----------
+  const visibleAgents = useMemo(() => activeAgents.filter((a) => matches(a, filter)), [activeAgents, filter]);
+  const rosterCounts = useMemo(() => countsOf(activeAgents, filter), [activeAgents, filter]);
+  const tableCounts = useMemo(() => countsOf(agents, filter), [agents, filter]);
+  const tableAgents = useMemo(() => agents.filter((a) => matches(a, filter)), [agents, filter]);
+  const realCount = useMemo(() => agents.filter((a) => a.cloudId).length, [agents]);
+  const repoOptions = useMemo(() => {
+    const seen = [...recentRepos];
+    for (const a of Object.values(cloud.agents)) if (a.repo && /^https?:\/\//.test(a.repo) && !seen.includes(a.repo)) seen.push(a.repo);
+    if (!seen.includes(DEFAULT_REPO)) seen.push(DEFAULT_REPO);
+    return seen.slice(0, 12);
+  }, [recentRepos, cloud.agents]);
+  /** Station labels on the map: the repos your real agents work on (most common first). */
+  const stations = useMemo(() => {
+    const n: Record<string, number> = {};
+    for (const a of Object.values(cloud.agents)) if (a.repo) n[repoShort(a.repo)] = (n[repoShort(a.repo)] ?? 0) + 1;
+    const top = Object.entries(n)
+      .sort((x, y) => y[1] - x[1])
+      .map(([r]) => r);
+    return top.length ? top.slice(0, 3) : undefined;
+  }, [cloud.agents]);
+  const refreshNow = useCallback(() => {
+    void cloud.listNow().then((ok) => flash(ok ? 'Agent list refreshed' : 'Refresh failed, see the connection notice', ok ? 'green' : 'red'));
+  }, [cloud, flash]);
+  const toggleView = useCallback((v?: 'map' | 'list') => setView((cur) => v ?? (cur === 'map' ? 'list' : 'map')), []);
 
   const openCockpit = useCallback((id: string) => {
     sfx.select();
@@ -988,11 +1142,23 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement | null;
-      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return;
+      // Never steal keys while the user is typing.
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
-      if (summonOpen || confirm) return; // modal dialogs own the keyboard (they handle Esc)
+      if (summonOpen || confirm || helpOpen) return; // modal dialogs own the keyboard (they handle Esc)
       const k = e.key;
       const lower = k.toLowerCase();
+      // Space / Enter on a focused button or link must press that control, not fire a board shortcut.
+      if ((k === ' ' || k === 'Enter') && el && el.closest('button, a, [role="button"], [role="tab"], summary')) return;
+      if (k === '?') {
+        e.preventDefault();
+        return setHelpOpen(true);
+      }
+      if (k === '/') {
+        e.preventDefault();
+        return searchRef.current?.focus();
+      }
+      if (lower === 'l') return toggleView();
       if (lower === 'm') return toggleMuted();
       if (lower === 'b') return toggleAmbient();
       if (lower === 't') {
@@ -1010,8 +1176,8 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         return;
       }
       const n = Number(k);
-      if (Number.isInteger(n) && n >= 1 && n <= 9 && n <= activeAgents.length) {
-        const id = activeAgents[n - 1].id;
+      if (Number.isInteger(n) && n >= 1 && n <= 9 && n <= visibleAgents.length) {
+        const id = visibleAgents[n - 1].id;
         sfx.select();
         setSelectedId(id);
         if (cockpitId) setCockpitId(id);
@@ -1031,18 +1197,27 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeAgents, assignOpen, cockpitId, selectedId, openCockpit, runCommand, summonOpen, confirm, territoryOpen, warRoomOpen]);
+  }, [visibleAgents, assignOpen, cockpitId, selectedId, openCockpit, runCommand, summonOpen, confirm, helpOpen, territoryOpen, warRoomOpen, toggleView]);
+
+  const rosterToolbar = (
+    <>
+      <FilterBar filter={filter} onChange={setFilter} counts={rosterCounts} searchRef={view === 'map' ? searchRef : undefined} idPrefix="roster" compact />
+      <ConnectionNotice uplink={cloud.info} realCount={realCount} now={now} onRefresh={refreshNow} onLaunch={actSummon} onHelp={() => setHelpOpen(true)} />
+    </>
+  );
 
   return (
-    <div className={`fleet-command${cockpitAgent ? ' fleet-command--cockpit' : ''}`}>
+    <div className={`fleet-command${cockpitAgent ? ' fleet-command--cockpit' : ''} fleet-command--${view}`}>
       <Map
         agents={activeAgents}
         selectedId={selectedId}
         onSelect={openCockpit}
         fog={{ territory: HOME_TERRITORY, touches: terr.touches[HOME_KEY], now }}
         bursts={bursts}
+        stations={stations}
       />
       <MissionBanner
+        left={<HudToolbar sound={false} view={view} onView={(v) => toggleView(v)} onHelp={() => setHelpOpen(true)} />}
         right={
           <HudToolbar
             onDemo={onDemo}
@@ -1054,15 +1229,55 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         }
       />
 
+      {view === 'list' && (
+        <FleetTable
+          agents={tableAgents}
+          archivedIds={archivedIds}
+          selectedId={selectedId}
+          filter={filter}
+          onFilterChange={setFilter}
+          counts={tableCounts}
+          onOpen={openCockpit}
+          onToggleArchive={archiveToggle}
+          onArchiveFinished={archiveFinished}
+          onLaunch={actSummon}
+          onRefresh={refreshNow}
+          onHelp={() => setHelpOpen(true)}
+          uplink={cloud.info}
+          now={now}
+          searchRef={searchRef}
+        />
+      )}
+
       <div className="hud-column hud-column--left">
         <AgentList
-          agents={activeAgents}
+          agents={visibleAgents}
+          totalCount={activeAgents.length}
           selectedId={selectedId}
           onSelect={openCockpit}
           archived={archivedUnits}
-          onRecall={recallUnit}
+          onRecall={(id) => archiveToggle(id)}
           departing={departing}
           arriving={arriving}
+          toolbar={rosterToolbar}
+          now={now}
+          empty={
+            filterActive(filter) ? (
+              <>
+                No agents match these filters.
+                <button type="button" className="link-btn" onClick={() => setFilter({ ...EMPTY_FILTER })}>
+                  Clear filters
+                </button>
+              </>
+            ) : (
+              <>
+                No active agents.
+                <button type="button" className="link-btn" onClick={actSummon}>
+                  Launch one
+                </button>
+              </>
+            )
+          }
         />
         <ActivityFeed entries={feed} />
         <Minimap
@@ -1102,8 +1317,12 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
           onRetreat={() => actRetreat(cockpitAgent.id)}
           onApprove={() => actApprove(cockpitAgent.id)}
           onTerminalSubmit={(v) => onTerminalSubmit(cockpitAgent.id, v)}
-          onArchive={cockpitAgent.pending ? undefined : () => (archivedIds.has(cockpitAgent.id) ? recallUnit(cockpitAgent.id) : toggleArchive(cockpitAgent.id))}
+          onArchive={cockpitAgent.pending ? undefined : () => archiveToggle(cockpitAgent.id)}
           archived={archivedIds.has(cockpitAgent.id)}
+          messages={cockpitAgent.cloudId ? convo[cockpitAgent.cloudId] : undefined}
+          convo={cockpitAgent.cloudId ? convoState[cockpitAgent.cloudId] : undefined}
+          onSendFollowup={cockpitAgent.cloudId ? (t) => actSendFollowup(cockpitAgent.id, t) : undefined}
+          now={now}
         />
       )}
 
@@ -1126,6 +1345,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
         onCommand={runCommand}
         onOpenCockpit={() => selectedId && openCockpit(selectedId)}
         uplink={cloud.info}
+        onHelp={() => setHelpOpen(true)}
       />
 
       {summonOpen && (
@@ -1133,15 +1353,19 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
           uplink={cloud.info}
           busy={summonBusy}
           error={summonError}
-          onLaunch={(p, r, f) => void actLaunch(p, r, f)}
+          onLaunch={(spec) => void actLaunch(spec)}
           onDrill={actDrill}
           initial={lastLaunch}
+          models={models}
+          modelsError={modelsError}
+          repoOptions={repoOptions}
           onClose={() => !summonBusy && setSummonOpen(false)}
         />
       )}
       {confirm && <ConfirmDialog spec={confirm} onClose={() => setConfirm(null)} />}
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
 
-      {toast && <div className={`cmd-toast cmd-toast--${toast.tone}`}>{toast.text}</div>}
+      <Toasts items={toasts} onDismiss={dismissToast} />
 
       <div className="crt-overlay" aria-hidden />
       <div className="crt-flicker" aria-hidden />

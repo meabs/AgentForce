@@ -20,6 +20,7 @@ import { handleAgentStream } from './agentStream.ts';
  *   GET  /api/agents/:id/conversation   transcript              -> { id, messages: MessageDTO[] }
  *   POST /api/agents/:id/followup {text}  follow-up (Assign)    -> { ok, id, runId? }
  *   POST /api/agents/:id/stop           stop / cancel (Retreat) -> { ok, id }
+ *   GET  /api/models                    launchable model ids    -> { apiVersion, models: string[] } (cached 10 min)
  *   GET  /api/agents/:id/stream         LIVE RUN STREAM (text/event-stream, see plugins/agentStream.ts)
  *        ?mode=poll forces the transcript-diff fallback; ?lastEventId=&runId= resumes a v1 run stream
  *
@@ -34,6 +35,8 @@ const DEFAULT_BASE = 'https://api.cursor.com';
 export const DEFAULT_REPO = 'https://github.com/meabs/AgentForce';
 export const DEFAULT_REF = 'main';
 const ID_RE = /^bc[-_][A-Za-z0-9_-]{4,80}$/;
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,79}$/;
+const MODELS_TTL_MS = 10 * 60_000;
 
 export interface AgentDTO {
   id: string;
@@ -180,7 +183,8 @@ async function upstream<T = any>(env: Env, method: 'GET' | 'POST', path: string,
     const code = (data && (data.code || data.error?.code)) || `UPSTREAM_${res.status}`;
     // Pass through meaningful client errors; collapse 5xx to 502.
     const status = res.status >= 500 ? 502 : res.status;
-    throw new HttpError(status, String(code), String(msg).slice(0, 400));
+    const retryAfter = res.status === 429 ? Number(res.headers.get('retry-after')) || undefined : undefined;
+    throw new HttpError(status, String(code), String(msg).slice(0, 400), retryAfter ? { retryAfter } : undefined);
   }
   return data as T;
 }
@@ -271,10 +275,19 @@ const api = {
     return out;
   },
 
-  async launch(env: Env, prompt: string, repo: string, ref: string): Promise<AgentDTO> {
+  async models(env: Env): Promise<string[]> {
+    const d = await upstream(env, 'GET', `/${env.version}/models`);
+    const list: unknown[] = Array.isArray(d.models) ? d.models : Array.isArray(d.items) ? d.items : [];
+    return list
+      .map((m) => (typeof m === 'string' ? m : str((m as any)?.id) ?? str((m as any)?.name) ?? ''))
+      .filter((m): m is string => !!m && MODEL_RE.test(m));
+  },
+
+  async launch(env: Env, prompt: string, repo: string, ref: string, model?: string): Promise<AgentDTO> {
     if (env.version === 'v0') {
       const d = await upstream(env, 'POST', '/v0/agents', {
         prompt: { text: prompt },
+        ...(model ? { model } : {}),
         source: { repository: repo, ...(ref ? { ref } : {}) },
         // Fleet units report back; they never open PRs on their own.
         target: { autoCreatePr: false },
@@ -283,6 +296,7 @@ const api = {
     }
     const d = await upstream(env, 'POST', '/v1/agents', {
       prompt: { text: prompt },
+      ...(model ? { model } : {}),
       repos: [{ url: repo, ...(ref ? { startingRef: ref } : {}) }],
       autoCreatePR: false,
     });
@@ -321,6 +335,8 @@ function validRepo(v: string) {
   }
 }
 
+let modelsCache: { at: number; key: string; models: string[] } | null = null;
+
 async function route(env: Env, req: IncomingMessage, res: ServerResponse, url: URL) {
   const parts = url.pathname.replace(/\/+$/, '').split('/').slice(3); // after /api/agents
   const method = req.method ?? 'GET';
@@ -329,6 +345,15 @@ async function route(env: Env, req: IncomingMessage, res: ServerResponse, url: U
     throw new HttpError(503, 'NO_API_KEY', 'Uplink offline: set CURSOR_API_KEY', {
       hint: 'Add CURSOR_API_KEY=... to .env.local (or export it) and the bridge picks it up within a few seconds.',
     });
+  }
+
+  if (url.pathname.replace(/\/+$/, '') === '/api/models') {
+    if (method !== 'GET') throw new HttpError(405, 'METHOD', 'GET only');
+    const cacheKey = `${env.version}:${env.base}:${env.key.length}`;
+    if (!modelsCache || modelsCache.key !== cacheKey || Date.now() - modelsCache.at > MODELS_TTL_MS) {
+      modelsCache = { at: Date.now(), key: cacheKey, models: await api.models(env) };
+    }
+    return send(res, 200, { apiVersion: env.version, models: modelsCache.models });
   }
 
   if (parts.length === 0) {
@@ -341,11 +366,13 @@ async function route(env: Env, req: IncomingMessage, res: ServerResponse, url: U
       const prompt = str(body.prompt)?.trim();
       const repo = (str(body.repo) ?? DEFAULT_REPO).trim();
       const ref = (str(body.ref) ?? DEFAULT_REF).trim();
+      const model = str(body.model)?.trim();
       if (!prompt) throw new HttpError(400, 'PROMPT_REQUIRED', 'prompt is required');
+      if (model && !MODEL_RE.test(model)) throw new HttpError(400, 'BAD_MODEL', 'invalid model id');
       if (prompt.length > MAX_PROMPT) throw new HttpError(400, 'PROMPT_TOO_LONG', `prompt over ${MAX_PROMPT} chars`);
       if (!validRepo(repo)) throw new HttpError(400, 'BAD_REPO', 'repo must be an http(s) repository URL');
       if (ref.length > 200 || /\s/.test(ref)) throw new HttpError(400, 'BAD_REF', 'invalid ref');
-      return send(res, 201, { apiVersion: env.version, agent: await api.launch(env, prompt, repo, ref) });
+      return send(res, 201, { apiVersion: env.version, agent: await api.launch(env, prompt, repo, ref, model) });
     }
     throw new HttpError(405, 'METHOD', 'GET or POST');
   }
@@ -394,7 +421,7 @@ export function cursorAgentsApi(opts: { root?: string; mode?: string } = {}): Pl
   let readEnv = makeEnvReader(opts.root ?? process.cwd(), opts.mode ?? 'development');
 
   const handler: Connect.NextHandleFunction = (req, res, next) => {
-    if (!req.url || !/^\/api\/agents(\/|\?|$)/.test(req.url)) return next();
+    if (!req.url || !/^\/api\/(agents|models)(\/|\?|$)/.test(req.url)) return next();
     if (!isLoopback(req)) return send(res, 403, { error: 'loopback only', code: 'FORBIDDEN' });
     if (!sameOriginLocal(req)) return send(res, 403, { error: 'cross-origin request refused', code: 'FORBIDDEN' });
     if (req.method === 'POST' && !String(req.headers['content-type'] ?? '').includes('application/json')) {

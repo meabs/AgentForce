@@ -1,6 +1,8 @@
 import { memo } from 'react';
 import type { Agent } from '../types';
 import { heat, MAP_MAX, MAP_MIN, type Territory, type Touch } from '../lib/territory';
+import { shipFor, STATIONS } from '../lib/art';
+import { plainStatus } from '../lib/agentView';
 import './Map.css';
 import './Territory.css';
 
@@ -17,6 +19,8 @@ interface MapProps {
   fog?: MapFog;
   /** One-shot effects per unit id: completion burst or alert pulse */
   bursts?: Record<string, 'done' | 'alert'>;
+  /** Repo names to show on the station markers (real agents' repos); defaults to the fictional ones */
+  stations?: string[];
 }
 
 /** Project flat map coords (0-100) onto the isometric ground plane (screen %). */
@@ -77,7 +81,7 @@ const FogLayer = memo(function FogLayer({ territory, touches, now }: MapFog) {
   );
 });
 
-export function Map({ agents, selectedId, onSelect, fog, bursts }: MapProps) {
+export function Map({ agents, selectedId, onSelect, fog, bursts, stations }: MapProps) {
   return (
     <div className="tactical-map" aria-label="Tactical operations map">
       <div className="tactical-map__bg" />
@@ -127,17 +131,19 @@ export function Map({ agents, selectedId, onSelect, fog, bursts }: MapProps) {
 
         {STRUCTURES.map((s, i) => {
           const p = project(s.x, s.y);
+          const art = i < 3 ? STATIONS[i] : undefined;
+          const label = stations?.length ? (i < stations.length ? stations[i] : '') : s.label;
           return (
             <div
               key={i}
-              className={`structure structure--${s.kind}`}
+              className={`structure structure--${s.kind}${art ? ' structure--art' : ''}`}
               style={{ left: `${p.left}%`, top: `${p.top}%` }}
               aria-hidden
             >
-              <span className="structure__block" />
+              {art ? <img className="structure__art" src={art} alt="" /> : <span className="structure__block" />}
               <span className="structure__light" />
               {s.kind === 'core' && <span className="structure__reticle" />}
-              {s.label && <span className="structure__label">{s.label}</span>}
+              {label && <span className="structure__label">{label}</span>}
             </div>
           );
         })}
@@ -152,17 +158,18 @@ export function Map({ agents, selectedId, onSelect, fog, bursts }: MapProps) {
               className={`unit-marker unit-marker--${agent.status.toLowerCase()}${agent.held ? ' unit-marker--held' : ''}${selected ? ' unit-marker--selected' : ''}`}
               style={{ left: `${p.left}%`, top: `${p.top}%` }}
               onClick={() => onSelect(agent.id)}
-              aria-label={`${agent.name}, ${agent.status}`}
+              aria-label={`${agent.name}, ${plainStatus(agent).label}: ${agent.mission}. Open details`}
             >
               <span className="unit-marker__warp" />
               {bursts?.[agent.id] && <span key={bursts[agent.id]} className={`unit-marker__burst unit-marker__burst--${bursts[agent.id]}`} />}
               <span className="unit-marker__ring" />
               <span className="unit-marker__beacon" />
-              <span className="unit-marker__ship" />
+              <img className="unit-marker__ship unit-marker__ship--art" src={shipFor(agent.id)} alt="" draggable={false} />
               <span className="unit-label">
                 <span className="unit-label__name">{agent.name}</span>
                 <span className="unit-label__status">
-                  {agent.status}{agent.held ? (agent.retreated ? ' · RTB' : ' · HOLD') : ''} · {agent.progress}%
+                  {plainStatus(agent).label}
+                  {agent.cloudId ? '' : ` · ${agent.progress}%`}
                 </span>
                 <span className="unit-label__activity">{agent.activity}</span>
               </span>
@@ -183,12 +190,6 @@ export function Map({ agents, selectedId, onSelect, fog, bursts }: MapProps) {
         <span className="legend legend--ally">ALLY</span>
         <span className="legend legend--neutral">NEUTRAL</span>
         <span className="legend legend--threat">THREAT</span>
-      </div>
-      <div className="tactical-map__tools" aria-hidden>
-        <button type="button">＋</button>
-        <button type="button">－</button>
-        <button type="button">▣</button>
-        <button type="button">◎</button>
       </div>
       <div className="tactical-map__vignette" aria-hidden />
     </div>

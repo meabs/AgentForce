@@ -216,3 +216,37 @@
 .command-bar__uplink--offline,
 .command-bar__uplink--error { color: #ff8aa0; }
 .command-bar__uplink--checking { color: var(--amber); }
+
+/* ---------- usability pass: plain labels first, RTS caption second */
+.command-bar__unit { font: inherit; border: 1px solid rgba(0, 229, 255, 0.28); grid-template-columns: auto 1fr auto; row-gap: 2px; }
+.command-bar__unit:disabled { cursor: default; }
+.command-bar__unit strong { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.command-bar__status { grid-column: 3; grid-row: 1; justify-self: end; font-size: 11px; padding: 0 5px; }
+.command-bar__unit .command-bar__unit-mission { grid-column: 1 / 3; font-size: 12px; color: #ffd690; letter-spacing: 0.01em; }
+.command-bar__unit-open { grid-column: 3; grid-row: 2; justify-self: end; font: 11px var(--font-mono); color: var(--cyan); text-transform: none; }
+.cmd-btn { max-width: 190px; gap: 9px; padding: 0 10px; }
+.cmd-btn__icon { font-size: 20px; }
+.cmd-btn__text { display: grid; gap: 1px; text-align: left; min-width: 0; }
+.cmd-btn__label { font: 700 12px var(--font-mono); letter-spacing: 0.04em; text-transform: none; white-space: nowrap; }
+.cmd-btn__rts { font: 700 8px var(--font-display); letter-spacing: 0.2em; opacity: 0.7; }
+.cmd-btn__key { font-size: 9px; opacity: 0.7; }
+.cmd-btn--danger { border-color: rgba(255, 111, 140, 0.8); color: #ff9fb2; background: linear-gradient(180deg, rgba(70, 8, 20, 0.75), rgba(30, 0, 8, 0.9)); }
+.cmd-btn--danger:hover { color: #ffd0da; background: linear-gradient(180deg, rgba(110, 16, 34, 0.85), rgba(50, 4, 14, 0.95)); }
+.command-bar__keys { grid-template-columns: 1fr; gap: 3px; font-size: 11px; text-transform: none; }
+.command-bar__help {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-self: start;
+  padding: 2px 6px;
+  border: 1px solid rgba(0, 229, 255, 0.45);
+  background: rgba(0, 30, 44, 0.8);
+  color: var(--cyan);
+  font: 12px var(--font-mono);
+  cursor: pointer;
+}
+.command-bar__help:hover { background: rgba(0, 229, 255, 0.16); color: #fff; }
+.command-bar__help kbd,
+.command-bar__hint kbd { min-width: 0; font-size: 10px; margin: 0; }
+.command-bar__hint { color: #9fcfe0; }
+.command-bar__secure { grid-column: auto; font-size: 11px; }
