@@ -1,10 +1,16 @@
-import { useState } from 'react';
-import type { Agent, AgentStatus } from '../types';
+import type { ReactNode } from 'react';
+import type { Agent } from '../types';
 import { ArchiveTray, type ArchivedUnit } from './ArchiveTray';
+import { isReal, plainStatus, relTime, repoShort, updatedAt } from '../lib/agentView';
+import { shipFor } from '../lib/art';
+import { Icon } from './Icon';
 import './AgentList.css';
 
 interface AgentListProps {
+  /** Units to show (already filtered by the caller) */
   agents: Agent[];
+  /** Units on the board before filtering, for the header count */
+  totalCount?: number;
   selectedId: string | null;
   onSelect: (id: string) => void;
   archived?: ArchivedUnit[];
@@ -13,45 +19,33 @@ interface AgentListProps {
   departing?: ReadonlySet<string>;
   /** Ids that just arrived (warp-in highlight) */
   arriving?: ReadonlySet<string>;
+  /** Search / filter controls and connection state, rendered under the header */
+  toolbar?: ReactNode;
+  /** Shown when `agents` is empty */
+  empty?: ReactNode;
+  now?: number;
 }
 
-type Filter = 'all' | 'working' | 'idle';
-
-const STATUS_LABEL: Record<AgentStatus, string> = {
-  RUNNING: 'RUNNING',
-  IDLE: 'IDLE',
-  BLOCKED: 'BLOCKED',
-};
-
-export function AgentList({ agents, selectedId, onSelect, archived = [], onRecall, departing, arriving }: AgentListProps) {
-  const [filter, setFilter] = useState<Filter>('all');
-  const running = agents.filter((a) => a.status === 'RUNNING').length;
-  const idle = agents.filter((a) => a.status !== 'RUNNING').length;
-  const shown = agents.filter((a) => filter === 'all' || (filter === 'working' ? a.status === 'RUNNING' : a.status !== 'RUNNING'));
+export function AgentList({ agents, totalCount, selectedId, onSelect, archived = [], onRecall, departing, arriving, toolbar, empty, now = Date.now() }: AgentListProps) {
+  const total = totalCount ?? agents.length;
   return (
     <aside className="agent-list hud-panel" aria-label="Agent roster">
       <div className="hud-panel__header">
         <div>
           <span className="hud-panel__tag">AGENT ORCHESTRATOR</span>
-          <div className="agent-list__tabs">
-            {(
-              [
-                ['all', `ALL (${agents.length})`],
-                ['working', `WORKING (${running})`],
-                ['idle', `IDLE/ALERT (${idle})`],
-              ] as const
-            ).map(([f, label]) => (
-              <button key={f} type="button" className={filter === f ? 'is-active' : ''} onClick={() => setFilter(f)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <span className="agent-list__sub">
+            {agents.length === total ? `${total} active agent${total === 1 ? '' : 's'}` : `${agents.length} of ${total} shown`}
+          </span>
         </div>
         <span className="hud-panel__meta">LIVE</span>
       </div>
+      {toolbar && <div className="agent-list__toolbar">{toolbar}</div>}
       <ul className="agent-list__items">
-        {shown.map((agent) => {
+        {agents.map((agent, i) => {
           const active = agent.id === selectedId;
+          const st = plainStatus(agent);
+          const real = isReal(agent);
+          const upd = updatedAt(agent);
           return (
             <li
               key={agent.id}
@@ -61,51 +55,61 @@ export function AgentList({ agents, selectedId, onSelect, archived = [], onRecal
                 type="button"
                 className={`agent-card agent-card--${agent.status.toLowerCase()}${agent.held ? ' agent-card--held' : ''}${active ? ' agent-card--selected' : ''}`}
                 onClick={() => onSelect(agent.id)}
+                aria-label={`${agent.name}, ${st.label}: ${agent.mission}. Open details`}
+                aria-current={active ? 'true' : undefined}
               >
                 <div className="agent-card__glyph" aria-hidden>
-                  <span className="agent-card__glyph-inner" />
+                  <img src={shipFor(agent.id)} alt="" className="agent-card__ship" width={40} height={26} />
+                  {i < 9 && <kbd className="agent-card__key">{i + 1}</kbd>}
                 </div>
                 <div className="agent-card__body">
                   <div className="agent-card__top">
-                    <span className="agent-card__name">{agent.name}</span>
-                    <span className="agent-card__pills">
-                      {agent.held && <span className="agent-hold">{agent.retreated ? 'RTB' : 'HOLD'}</span>}
-                      <span className={`agent-status agent-status--${agent.status.toLowerCase()}`}>
-                        {STATUS_LABEL[agent.status]}
-                      </span>
+                    <span className="agent-card__name">
+                      {agent.name}
+                      {!real && <em className="tag tag--sim">SIM</em>}
+                    </span>
+                    <span className={`status-chip status-chip--${st.tone}`} title={st.hint}>
+                      <Icon name={st.icon} /> {st.label}
                     </span>
                   </div>
+                  <div className="agent-card__task">{agent.mission}</div>
                   <div className="agent-card__meta-row">
-                    <span>{agent.classLabel}</span>
-                    <span>·</span>
-                    <span>{agent.role}</span>
-                    <span>·</span>
-                    <span className="agent-card__mission">{agent.mission}</span>
+                    {real && agent.cloud?.repo ? (
+                      <>
+                        <span>
+                          <Icon name="repo" /> {repoShort(agent.cloud.repo)}
+                        </span>
+                        {upd && <span>· {relTime(upd, now)}</span>}
+                      </>
+                    ) : (
+                      <span>
+                        {agent.classLabel} · {agent.role}
+                      </span>
+                    )}
                   </div>
                   <div className="agent-card__activity">{agent.activity}</div>
-                  <div className="agent-card__bars">
-                    <div className="bar">
-                      <span>HP</span>
-                      <div className="bar__track">
-                        <div className="bar__fill bar__fill--hp" style={{ width: `${agent.hp}%` }} />
+                  {!real && (
+                    <div className="agent-card__bars" aria-hidden>
+                      <div className="bar">
+                        <span>HP</span>
+                        <div className="bar__track">
+                          <div className="bar__fill bar__fill--hp" style={{ width: `${agent.hp}%` }} />
+                        </div>
+                      </div>
+                      <div className="bar">
+                        <span>TOK</span>
+                        <div className="bar__track">
+                          <div className="bar__fill bar__fill--tok" style={{ width: `${agent.tokens}%` }} />
+                        </div>
                       </div>
                     </div>
-                    <div className="bar">
-                      <span>TOK</span>
-                      <div className="bar__track">
-                        <div
-                          className="bar__fill bar__fill--tok"
-                          style={{ width: `${agent.tokens}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                  )}
                 </div>
               </button>
             </li>
           );
         })}
-        {shown.length === 0 && <li className="agent-list__empty">NO UNITS MATCH · {filter.toUpperCase()}</li>}
+        {agents.length === 0 && <li className="agent-list__empty">{empty ?? 'No agents match these filters.'}</li>}
       </ul>
       <ArchiveTray units={archived} selectedId={selectedId} onOpen={onSelect} onRecall={onRecall} />
     </aside>

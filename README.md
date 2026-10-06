@@ -1,7 +1,5 @@
 # ◆ AGENT FLEET COMMAND ◆
 
-[![Deploy demo](https://github.com/meabs/AgentForce/actions/workflows/pages.yml/badge.svg)](https://github.com/meabs/AgentForce/actions/workflows/pages.yml)
-
 > **Your coding agents, deployed as a holographic strike fleet.** This is a real-time strategy command board for AI agents, with cyan/amber HUD, scanlines, radar sweep and all.
 
 <p align="center">
@@ -11,6 +9,8 @@
 <p align="center"><b>▶ <a href="media/demo.mp4">Watch the 60-second Mission Replay</a></b> (mp4, no audio). The GIF is a 16-second highlight reel; click it for the full take.</p>
 
 <p align="center"><b>🎮 PLAY THE DEMO: <a href="https://meabs.github.io/AgentForce/">meabs.github.io/AgentForce</a></b><br><sub>The Mission Replay in your browser, with sound. No install, no API key, no real agents. Click ENGAGE to start.</sub></p>
+
+> **New: a board you can actually run.** Plain-language buttons, a sortable list view, search and status filters, a detail panel with the full conversation, follow-up box and Stop, help on `?`, and free CC0 / CC BY art. See [USABILITY PASS](#-usability-pass-a-board-you-can-actually-run).
 
 > **Before you fly:** read the [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested). Some systems are combat-proven, some have only flown in the simulator, and we tell you which is which.
 
@@ -41,10 +41,15 @@ real orders.
 | Simulated units (mock fleet) | 🟢 Tested, working | No key or network needed |
 | Cockpit, streaming terminal and console | 🟢 Tested, working | |
 | Keyboard shortcuts | 🟢 Tested, working | |
-| Hosted Mission Replay demo (`https://meabs.github.io/AgentForce/`) | 🟢 Tested, working | Runs with no API key and supports desktop, tablet, and phone layouts. Checked with emulated iPhone 13 and Pixel 7 devices, plus desktop 1600×900. Not tested on a physical phone. |
+| Mission Replay demo (`?demo=1`) | 🟢 Tested, working | Runs with no API key |
 | Fog of war map (Territory overlay, minimap FOG mode) | 🟢 Tested, working | Real-agent coverage is partial, see limits below |
 | War Room timeline | 🟢 Tested, working | |
 | Archive tray UI | 🟢 Tested, working | Board-only, saved in `localStorage` |
+| Usability pass: list view, search / filters, detail panel, help overlay, toasts | 🟢 Tested, working | 28 scripted browser checks (Playwright) on 2026-10-06 against the dev server, at 1440×900 and 390×844. The orders inside those checks (launch, follow-up, stop, approve, archive) ran against a **fake bridge**, see the next rows |
+| List + detail panel on the real account (read-only) | 🟢 Verified on the real Cursor API | 2026-10-06: the list view showed every real agent (35) with status, repo, branch and updated time, and the detail panel loaded a real conversation (7 messages). Only `GET` requests were sent. These screenshots stay private because they show real repos and prompts; the ones in this README use fake data |
+| `GET /api/models` + model picker in the launch dialog | 🟡 Fake bridge only | The route is a plain `GET /v0/models`, but no real agent was launched with an explicit model. Launch with a model, plus repo / prompt validation, was checked against the fake bridge only |
+| Follow-up composer, Stop confirm, Approve confirm, Archive finished + Undo | 🟡 Fake bridge only | Same bridge routes as the orders verified live below; the new UI around them was only driven against the fake bridge |
+| Offline (no key), API error and rate-limit (429) notices | 🟡 Fake bridge only | Faked with 503 and 429 answers. A real 429 from Cursor has not been seen |
 | Sound effects, HUM and voice lines | 🟡 Wired in, not yet heard by a human | The Pixabay clips (see `public/sfx/CREDITS.md`) and the HUM loop are wired in: they load with HTTP 200 and decode in headless Chrome (also under the `/AgentForce/` subpath), and the synth fallback kicks in when a clip is missing. Nobody has listened to them yet: headless capture had no audio, and the demo video is silent |
 | `npm run build` | 🟢 Passes | |
 | `npm run build:demo` + GitHub Pages workflow | 🟡 Verified locally, not yet deployed | Built with base `/AgentForce/`, served under that subpath and checked in headless Chrome on 2026-10-06: page loads, every asset and sound answers 200, no console errors, no `/api` calls, replay runs after ENGAGE. The workflow has not run on GitHub yet |
@@ -192,6 +197,9 @@ The old CPU/MEM panel is now a token burn meter: tokens per minute with a sparkl
 
 | Key | Action |
 |---|---|
+| `?` | Help: every shortcut plus a glossary of the RTS words |
+| `/` | Jump to search |
+| `L` | Switch between map and list view |
 | `T` | Territory (fog of war) overlay |
 | `W` | War Room timeline |
 | `M` | Mute / unmute sound and voice |
@@ -201,6 +209,64 @@ The old CPU/MEM panel is now a token burn meter: tokens per minute with a sparkl
 ![Live HUD after the upgrade](media/morning-hud.png)
 
 <sub>▲ **LIVE HUD, UPGRADED.** Fog on the map, the archive tray under the roster, the frugal resource meter and the new toolbar (SOUND, TERRITORY, WAR ROOM, DEMO).</sub>
+
+---
+
+## 🧭 USABILITY PASS: A BOARD YOU CAN ACTUALLY RUN
+
+```
+SHIP'S LOG, CYCLE 4782.21 (2026-10-06)
+
+The HUD looked the part, but managing real agents on it was hard work:
+buttons spoke only RTS ("RETREAT", "SUMMON"), only the 5 newest agents
+showed up, there was no search, no list, no way to read a whole
+conversation, and every old agent glowed red as BLOCKED. Fixed below.
+```
+
+![List view: sortable table of agents with status, repository, branch, updated time and links](media/ux-roster.png)
+
+<sub>▲ **LIST VIEW** (`L`). Every agent in one sortable table, with search and status filters. Fake data from the test bridge.</sub>
+
+![Detail panel: status, repository, branch, prompt, links, conversation, follow-up box and Stop](media/ux-detail.png)
+
+<sub>▲ **DETAIL PANEL.** Click any agent: status, repo, branch, timestamps, prompt, links, the full conversation, a follow-up box and Stop.</sub>
+
+**What changed**
+
+| Area | Now |
+|---|---|
+| Labels | Every button says what it does, with the RTS name as a small caption: **Launch agent** (SUMMON), **Follow-up** (ASSIGN), **Pause board** (HOLD), **Stop agent** (RETREAT), **Approve plan** (APPROVE). Status words are plain too: Running, Starting, Needs input, Failed, Finished, Expired, Stopped, Paused (board) |
+| Find an agent | Search (name, task, repo, branch, id) with `/`, status chips (All / Running / Needs attention / Finished, with counts) and a Real / Sim switch. Same filters on the map roster and the list view |
+| List view | `L` or the **LIST** button. Sortable columns: Agent, Status, Repository, Branch, Updated, Links (PR, Cursor ↗, Archive). **Archive finished** tidies up in one click (with Undo). On a phone each row becomes a card |
+| Detail panel | The cockpit now leads with what you need: status (with the raw Cursor state), repository, branch link, PR link, updated / created times, agent id with copy, the original prompt, **Open in Cursor ↗**, then a **Conversation** tab (chat bubbles) next to the old **Terminal log**. The follow-up box is always there; `Enter` sends |
+| Failures | Failed or blocked agents get a red callout that says what Cursor reported and what to do next, plus the last summary |
+| Launching | The launch dialog checks the prompt and repository inline (accepts `owner/repo` or a full GitHub URL), remembers recent repos, offers a **Model** picker (from `GET /v0/models`, or "Default"), explains that it starts a real, billed agent, and stays disabled with a reason when the board isn't connected. A failed launch gets an **Edit & retry** toast |
+| Safety | **Stop agent** and **Approve plan** on real agents ask first. In the detail panel, Stop is greyed out when there's nothing to stop. Archive is board-only and undoable |
+| States | Clear notices for: checking, not connected (how to add `CURSOR_API_KEY`), API error (Retry now), rate limited (countdown; polling backs off for 60 s), and no agents yet |
+| More agents | The board now lists up to 50 of your newest agents (was 5) |
+| Help | `?` opens every shortcut, a glossary of the RTS words and the status colours. Shortcuts never fire while you type in a box |
+| Accessibility | Visible focus ring, labels on icon buttons, larger text in the roster and panels, toasts read out by screen readers, dialogs return focus to where you were |
+| Replay | The Mission Replay shows the new roster (search and filters work there too) and help on `?` |
+
+![Phone layout: list as cards and a full-screen detail panel](media/ux-mobile-list.png)
+
+<sub>▲ **ON A PHONE** (390×844). The list turns into cards, the detail panel goes full screen and the command bar keeps all five orders.</sub>
+
+More screenshots, all fake data: [map](media/ux-map.png) · [failed agent](media/ux-failed.png) · [launch validation](media/ux-launch.png) · [stop confirm](media/ux-stop-confirm.png) · [help](media/ux-help.png) · [not connected](media/ux-offline.png) · [phone map](media/ux-mobile.png) · [phone detail](media/ux-mobile-detail.png) · [replay](media/ux-demo.png) · [replay on a phone](media/ux-demo-mobile.png).
+
+**New bridge route:** `GET /api/models` → `GET /v0/models` (cached for 10 minutes), and `POST /api/agents` now takes an optional `model` (letters, digits, `.`, `_`, `:` and `-` only).
+
+**New files:** `src/components/FleetTable.tsx`, `FilterBar.tsx`, `ConnectionNotice.tsx`, `HelpOverlay.tsx`, `Toasts.tsx`, `Icon.tsx`, `ui.css`, `src/lib/agentView.ts` (plain status words, filters, links) and `src/lib/art.ts`.
+
+**How it was tested:** a Playwright script drove the dev server in five modes. **Live, read-only:** real key, list and conversation only, and any non-GET request was blocked by the test (none were sent). **Fake bridge:** every order. **Offline**, **rate limited** and **phone**. A second script checked the replay build under `/AgentForce/` (art loads, no `/api` calls, search and help work). Both builds and the type check pass. Not tested: screen readers, keyboard-only use of the whole app, and a real 429 from Cursor.
+
+### 🎨 ART CREDITS
+
+All art is free and safe to redistribute. Full per-file list: [`public/art/CREDITS.md`](public/art/CREDITS.md).
+
+- **[Kenney](https://www.kenney.nl)** (CC0): ships and stations from [Space Kit](https://kenney.nl/assets/space-kit), consoles from [Space Station Kit](https://kenney.nl/assets/space-station-kit), the notched panel frame from [UI Pack: Sci-fi](https://kenney.nl/assets/ui-pack-sci-fi). Used as map and roster sprites, repo stations on the map, and in the empty / offline notices.
+- **[game-icons.net](https://game-icons.net)** (CC BY 3.0): 19 icons by **Lorc**, **Delapouite**, **Sbed** and **Guard13007**, used on buttons, status chips and links.
+- Not included: Engvee's isometric drone pack. Its licence doesn't clearly allow redistribution in a public repo.
 
 ---
 
@@ -299,7 +365,7 @@ Select any unit to open its cockpit, which slides in from the right. It shows:
 | **ASSIGN MISSION** | Opens a quick-pick of 9 missions plus a custom field, and updates the mission on the card, map label and cockpit | `A` |
 | **RETREAT** | Parks the unit at the rally point: status → IDLE, RTB badge, ticker paused, warning log line. RESUME redeploys it. | `R` |
 | **APPROVE PLAN** | ACK toast, green log line, unit progress +15% and mission progress +3%. A BLOCKED unit gets unblocked and moves to RUNNING. | `P` |
-| **SUMMON AGENT** | Opens the Summon dialog. **DRILL UNIT** warps in a new mock unit (PROBE-11, VECTOR-2, RELAY-4…); **LAUNCH CLOUD AGENT** starts a real one via the [uplink](#-live-command-uplink). Either way the new unit is selected and its cockpit opens. | `S` |
+| **SUMMON AGENT** | Opens the launch dialog. **Add simulated unit** warps in a new mock unit (PROBE-11, VECTOR-2, RELAY-4…); **Launch agent** starts a real one via the [uplink](#-live-command-uplink). Either way the new unit is selected and its cockpit opens. | `S` |
 | **Open / close** | `Enter` opens the selected unit's cockpit. `Esc` closes the mission picker first, then the cockpit. ✕ also closes it. | `Enter` / `Esc` |
 
 Every order adds a line to the unit's terminal and to the activity feed. On simulated units all orders are **local to the board**. On real units (CURSOR-7 and any `CLOUD-xxxx` unit) ASSIGN, APPROVE, RETREAT and SUMMON are wired to drive the real cloud agent once the [LIVE COMMAND UPLINK](#-live-command-uplink) is armed, and fall back to local board orders when it isn't. (On the default v0 API those write orders were verified against the real Cursor API on 2026-10-06; see [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested).)
@@ -332,8 +398,10 @@ When an update lands:
 | Uplink says | Board shows |
 |---|---|
 | CREATING, PENDING, QUEUED, STARTING, RUNNING, IN_PROGRESS, ACTIVE, WORKING | 🟢 **RUNNING** |
-| FAILED, ERROR, ERRORED, BLOCKED, CANCELLED/CANCELED, EXPIRED, TIMEOUT, NEEDS_INPUT, AWAITING_APPROVAL | 🔴 **BLOCKED** |
-| FINISHED, COMPLETED, DONE, SUCCEEDED, STOPPED, anything else | 🟡 **IDLE** |
+| FAILED, ERROR, ERRORED, BLOCKED, TIMEOUT, NEEDS_INPUT, AWAITING_APPROVAL | 🔴 **BLOCKED** |
+| FINISHED, COMPLETED, DONE, SUCCEEDED, STOPPED, CANCELLED/CANCELED, EXPIRED, anything else | 🟡 **IDLE** |
+
+EXPIRED and CANCELLED used to show as BLOCKED, which raised a false alarm on every old agent (v0 marks finished agents EXPIRED after a while). They now count as done.
 
 ### Transmitting a status update
 
@@ -421,7 +489,7 @@ sees it.
 
 | Bridge route | Upstream (v0, default) | Cockpit order |
 |---|---|---|
-| `GET /api/agents` | `GET /v0/agents` | Roster discovery: the 5 newest agents join the map as `CLOUD-xxxx` units |
+| `GET /api/agents` | `GET /v0/agents` | Roster discovery: the 50 newest agents join the board as `CLOUD-xxxx` units (one page; older agents are not shown) |
 | `GET /api/agents/:id` | `GET /v0/agents/{id}` | Status + summary, polled every ~3s |
 | `GET /api/agents/:id/conversation` | `GET /v0/agents/{id}/conversation` | Transcript streamed into the terminal |
 | `POST /api/agents/:id/followup` `{text}` | `POST /v0/agents/{id}/followup` | **ASSIGN MISSION**, **APPROVE PLAN**, free text in the console |
@@ -455,7 +523,7 @@ Any unit with a `bc-` cloud agent id is a real unit. That covers CURSOR-7 (its i
 
 | Order | What happens on a real unit |
 |---|---|
-| **SUMMON AGENT** (`S`) | Opens the launch dialog: mission prompt, repository (default `https://github.com/meabs/AgentForce`) and ref (default `main`). **LAUNCH CLOUD AGENT** (`Ctrl+Enter`) starts a real agent, which warps onto the map as a RUNNING `CLOUD-xxxx` unit with its cockpit open. **DRILL UNIT** still summons a simulated wingmate. |
+| **SUMMON AGENT** (`S`) | Opens the launch dialog: mission prompt, repository (default `https://github.com/meabs/AgentForce`) and ref (default `main`). **Launch agent** (`Ctrl+Enter`) starts a real agent, which warps onto the map as a RUNNING `CLOUD-xxxx` unit with its detail panel open. **Add simulated unit** still summons a simulated wingmate. |
 | **ASSIGN MISSION** (`A`) | Opens a follow-up prompt. `Enter` sends it to the agent, `Shift+Enter` adds a newline. |
 | **APPROVE PLAN** (`P`) | Sends the follow-up `Approved, proceed.` |
 | **RETREAT** (`R`) | Asks for confirmation, then sends a stop order. A later ASSIGN puts the agent back to work. |

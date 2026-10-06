@@ -7,6 +7,8 @@ interface MissionBannerProps {
   rightMeta?: string;
   /** Interactive controls rendered on the right of the top bar */
   right?: ReactNode;
+  /** Interactive controls rendered on the left of the top bar (replaces leftMeta) */
+  left?: ReactNode;
 }
 
 export function MissionBanner({
@@ -14,10 +16,11 @@ export function MissionBanner({
   leftMeta = 'ORCHESTRATOR v2.7.1  ·  SYS-UPLINK: SECURE',
   rightMeta = 'SOL-9 / LUNAR OUTPOST  ·  CYCLE 4782.19',
   right,
+  left,
 }: MissionBannerProps) {
   return (
-    <header className="top-bar">
-      <div className="top-bar__left">{leftMeta}</div>
+    <header className={`top-bar${left ? ' top-bar--controls' : ''}`}>
+      <div className="top-bar__left">{left ?? leftMeta}</div>
       <div className="mission-banner">
         <span className="mission-banner__chevron" aria-hidden>
           ❮

@@ -4,7 +4,8 @@ import { uplink, type CloudAgent, type CloudMessage, type UplinkResult } from '.
 
 const POLL_MS = 3000;
 const LIST_EVERY_TICKS = 5; // ~15s
-const MAX_LISTED_UNITS = 5;
+/** Roster discovery: every agent in the newest page joins the board (finished ones dock in the archive). */
+const MAX_LISTED_UNITS = 50;
 const TOUCH_WINDOW_MS = 120_000;
 const MAX_STATUS_PER_TICK = 6;
 /**
@@ -28,6 +29,8 @@ export interface UplinkInfo {
   apiVersion?: string;
   checkedAt?: number;
   agentCount?: number;
+  /** Set while the Cursor API is rate limiting us (429); polling pauses until then. */
+  rateLimitedUntil?: number;
 }
 
 interface Options {
@@ -38,6 +41,8 @@ interface Options {
   /** Cloud ids on a local board HOLD: no polling, no board updates. */
   heldIds: ReadonlySet<string>;
   onMessages: (cloudId: string, msgs: CloudMessage[], first: boolean) => void;
+  /** Transcript fetch failed for the focused unit (shown in the detail panel). */
+  onConversationError?: (cloudId: string, error: string) => void;
   /** True while the cockpit's live run stream owns this agent's transcript (skip the 3 s transcript poll). */
   isStreaming?: (cloudId: string) => boolean;
 }
@@ -49,7 +54,7 @@ interface Options {
  *  - conversation every ~3s for the cockpit-focused unit (new messages only), except while the
  *    cockpit's LIVE RUN STREAM (useLiveStream) is attached to it
  */
-export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStreaming }: Options) {
+export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, onConversationError, isStreaming }: Options) {
   const [info, setInfo] = useState<UplinkInfo>({ phase: 'checking' });
   const [agents, setAgents] = useState<Record<string, CloudAgent>>({});
   const [listedIds, setListedIds] = useState<string[]>([]);
@@ -59,8 +64,9 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
   agentsRef.current = agents;
   const infoRef = useRef(info);
   infoRef.current = info;
-  const optsRef = useRef({ extraIds, focusId, heldIds, onMessages, isStreaming });
-  optsRef.current = { extraIds, focusId, heldIds, onMessages, isStreaming };
+  const optsRef = useRef({ extraIds, focusId, heldIds, onMessages, onConversationError, isStreaming });
+  optsRef.current = { extraIds, focusId, heldIds, onMessages, onConversationError, isStreaming };
+  const backoffUntilRef = useRef(0);
   const listedRef = useRef<string[]>([]);
   const summonedRef = useRef<string[]>([]);
   const touchedRef = useRef<Record<string, number>>({});
@@ -77,7 +83,11 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
   const streamFinalRef = useRef<Record<string, number>>({});
 
   const noteFailure = useCallback((r: Extract<UplinkResult<unknown>, { ok: false }>) => {
-    if (r.status === 503 || r.code === 'NO_API_KEY') {
+    if (r.status === 429) {
+      const until = Date.now() + 60_000;
+      backoffUntilRef.current = until;
+      setInfo((p) => ({ ...p, phase: 'error', reason: 'Rate limited by the Cursor API (429), retrying in about a minute', rateLimitedUntil: until, checkedAt: Date.now() }));
+    } else if (r.status === 503 || r.code === 'NO_API_KEY') {
       setInfo((p) => ({ ...p, phase: 'offline', reason: r.error, checkedAt: Date.now() }));
     } else if (r.status === 401 || r.status === 403 || r.status === 0 || r.code === 'BAD_RESPONSE') {
       setInfo((p) => ({ ...p, phase: 'error', reason: r.error, checkedAt: Date.now() }));
@@ -109,11 +119,12 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
   }, []);
 
   const doList = useCallback(async () => {
-    const r = await uplink.list(Math.max(10, MAX_LISTED_UNITS * 2));
+    const r = await uplink.list(MAX_LISTED_UNITS);
     if (!r.ok) {
       noteFailure(r);
       return false;
     }
+    backoffUntilRef.current = 0;
     setInfo({ phase: 'online', apiVersion: r.data.apiVersion, checkedAt: Date.now(), agentCount: r.data.agents.length });
     for (const a of r.data.agents) upsert(a);
     const ids = r.data.agents.map((a) => a.id).slice(0, MAX_LISTED_UNITS);
@@ -147,6 +158,7 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
       if (!r.ok) {
         if (r.status === 404) goneRef.current.add(id);
         else noteFailure(r);
+        optsRef.current.onConversationError?.(id, r.status === 404 ? 'Transcript not found (404)' : r.error);
         return;
       }
       const seen = seenRef.current[id];
@@ -169,6 +181,7 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
       if (busyRef.current) return;
       busyRef.current = true;
       try {
+        if (Date.now() < backoffUntilRef.current) return; // 429: let the API cool down
         const t = tickRef.current++;
         const online = infoRef.current.phase === 'online';
         const listDue = t % LIST_EVERY_TICKS === 0;
@@ -237,8 +250,8 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
 
   // ---------- commands ----------
   const launch = useCallback(
-    async (prompt: string, repo: string, ref: string) => {
-      const r = await uplink.launch(prompt, repo, ref);
+    async (prompt: string, repo: string, ref: string, model?: string) => {
+      const r = await uplink.launch(prompt, repo, ref, model);
       if (!r.ok) {
         noteFailure(r);
         return r;
@@ -287,5 +300,11 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages, isStrea
     [noteFailure, touch, refresh],
   );
 
-  return { info, agents, listedIds, summonedIds, launch, followup, stop, refresh, noteStatus, primeConversation };
+  /** Re-list now (the REFRESH button), unless we are rate limited. */
+  const listNow = useCallback(async () => {
+    if (Date.now() < backoffUntilRef.current) return false;
+    return doList();
+  }, [doList]);
+
+  return { info, agents, listedIds, summonedIds, launch, followup, stop, refresh, listNow, noteStatus, primeConversation };
 }

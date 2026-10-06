@@ -256,3 +256,27 @@
   .cmd-btn__label { font-size: 8px; letter-spacing: 0.04em; }
   .cmd-btn__key { display: none; }
 }
+
+/* ---------- usability pass: list view + phone/tablet fixes */
+.fleet-command--list .hud-column--left .agent-list { display: none; }
+.toasts { bottom: 96px; }
+
+@media (max-width: 1279px) {
+  /* The map is the opening view: keep its units inside the visible hero area instead of the whole scroll height */
+  .fleet-command > .tactical-map { bottom: auto; height: min(62dvh, 580px); }
+  .fleet-command--list { padding-top: 64px; }
+  .fleet-command--list > .tactical-map { display: none; }
+  .toasts { position: fixed; bottom: 100px; }
+}
+
+@media (max-width: 640px) {
+  .fleet-command > .tactical-map { height: min(64dvh, 510px); }
+  .fleet-command--list { padding-top: 58px; }
+  .command-bar__actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
+  .cmd-btn { max-width: none; flex-direction: column; gap: 3px; padding: 4px 2px; }
+  .cmd-btn__icon { font-size: 18px; }
+  .cmd-btn__text { text-align: center; }
+  .cmd-btn__label { font-size: 10px; letter-spacing: 0; white-space: normal; line-height: 1.1; }
+  .cmd-btn__rts { display: none; }
+  .toasts { bottom: calc(86px + env(safe-area-inset-bottom)); }
+}

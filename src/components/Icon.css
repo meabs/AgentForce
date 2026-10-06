@@ -1,0 +1,30 @@
+/* game-icons.net (CC BY 3.0) masks: the glyph takes the text colour. Vite rewrites these public URLs with the app base. */
+.gi {
+  display: inline-block;
+  flex: none;
+  width: 1em;
+  height: 1em;
+  vertical-align: -0.14em;
+  background-color: currentColor;
+  -webkit-mask: var(--gi) center / contain no-repeat;
+  mask: var(--gi) center / contain no-repeat;
+}
+.gi--launch { --gi: url('/art/game-icons/launch.svg'); }
+.gi--stop { --gi: url('/art/game-icons/stop.svg'); }
+.gi--followup { --gi: url('/art/game-icons/followup.svg'); }
+.gi--pr { --gi: url('/art/game-icons/pr.svg'); }
+.gi--branch { --gi: url('/art/game-icons/branch.svg'); }
+.gi--repo { --gi: url('/art/game-icons/repo.svg'); }
+.gi--archive { --gi: url('/art/game-icons/archive.svg'); }
+.gi--alert { --gi: url('/art/game-icons/alert.svg'); }
+.gi--success { --gi: url('/art/game-icons/success.svg'); }
+.gi--running { --gi: url('/art/game-icons/running.svg'); }
+.gi--search { --gi: url('/art/game-icons/search.svg'); }
+.gi--help { --gi: url('/art/game-icons/help.svg'); }
+.gi--pause { --gi: url('/art/game-icons/pause.svg'); }
+.gi--approve { --gi: url('/art/game-icons/approve.svg'); }
+.gi--list { --gi: url('/art/game-icons/list.svg'); }
+.gi--map { --gi: url('/art/game-icons/map.svg'); }
+.gi--recall { --gi: url('/art/game-icons/recall.svg'); }
+.gi--refresh { --gi: url('/art/game-icons/refresh.svg'); }
+.gi--pending { --gi: url('/art/game-icons/pending.svg'); }

@@ -10,6 +10,9 @@ import { CommandBar, type CommandId } from '../components/CommandBar';
 import { Cockpit } from '../components/Cockpit';
 import { BurnMeter, rateOf, USD_PER_MTOK } from '../components/BurnMeter';
 import { HudToolbar } from '../components/HudToolbar';
+import { FilterBar } from '../components/FilterBar';
+import { HelpOverlay } from '../components/HelpOverlay';
+import { countsOf, EMPTY_FILTER, matches, type FleetFilter } from '../lib/agentView';
 import { TerritoryOverlay } from '../components/TerritoryOverlay';
 import { WarRoom } from '../components/WarRoom';
 import type { ArchivedUnit } from '../components/ArchiveTray';
@@ -190,6 +193,8 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   const [countdown, setCountdown] = useState(5);
   const [, setFrame] = useState(0);
   const [runKey, setRunKey] = useState(0);
+  const [filter, setFilter] = useState<FleetFilter>(EMPTY_FILTER);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [paused, setPaused] = useState(false);
   const world = useRef<World>(freshWorld());
   const elapsedRef = useRef(0);
@@ -571,7 +576,13 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   // keyboard: space pause, R restart, Esc exit, M mute, B bridge hum, Enter engage
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      // never hijack typing (roster search) or modifier shortcuts; the help overlay handles its own keys
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || helpOpen) return;
       const k = e.key.toLowerCase();
+      if (k === '?') return setHelpOpen(true);
+      if ((k === ' ' || k === 'enter') && el && el.closest('button, a, [role="tab"]')) return;
       if (k === 'm') return toggleMuted();
       if (k === 'b') return toggleAmbient();
       if (k === 'escape' && !world.current.territoryOpen && !world.current.warRoomOpen) return onExit();
@@ -587,7 +598,7 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [phase, engage, onExit]);
+  }, [phase, engage, onExit, helpOpen]);
 
   // ---------- derived view ----------
   const agents = useMemo(
@@ -622,6 +633,8 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   const selected = agents.find((a) => a.id === W.selectedId) ?? agents[0];
   const cost = (W.tokens / 1e6) * USD_PER_MTOK;
   const noop = () => {};
+  const rosterAgents = agents.filter((a) => matches(a, filter));
+  const rosterCounts = countsOf(agents, filter);
 
   return (
     <div className={`fleet-command demo-mode${cockpitAgent ? ' fleet-command--cockpit' : ''}${phase !== 'playing' ? ' demo-mode--card' : ''}`}>
@@ -631,11 +644,29 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
       <MissionBanner
         title={W.missionLabel === 'STANDBY' ? 'MISSION REPLAY' : W.missionLabel}
         leftMeta="ORCHESTRATOR v2.7.1  ·  REPLAY MODE  ·  NO API KEY"
-        right={<HudToolbar onDemo={canExit ? onExit : undefined} demo />}
+        right={<HudToolbar onDemo={canExit ? onExit : undefined} demo onHelp={() => setHelpOpen(true)} />}
       />
 
       <div className="hud-column hud-column--left">
-        <AgentList agents={agents} selectedId={W.selectedId} onSelect={noop} archived={W.archived} departing={W.departing} arriving={W.arriving} />
+        <AgentList
+          agents={rosterAgents}
+          totalCount={agents.length}
+          selectedId={W.selectedId}
+          onSelect={noop}
+          archived={W.archived}
+          departing={W.departing}
+          arriving={W.arriving}
+          now={now}
+          toolbar={<FilterBar filter={filter} onChange={setFilter} counts={rosterCounts} idPrefix="demo" compact hideSource />}
+          empty={
+            <>
+              No units match these filters.
+              <button type="button" className="link-btn" onClick={() => setFilter({ ...EMPTY_FILTER })}>
+                Clear filters
+              </button>
+            </>
+          }
+        />
         <ActivityFeed entries={W.feed} />
         <Minimap agents={agents} selectedId={W.selectedId} territory={HOME_TERRITORY} touches={touches} now={now} />
       </div>
@@ -665,8 +696,12 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
           onRetreat={noop}
           onApprove={noop}
           onTerminalSubmit={noop}
+          now={now}
+          demo
         />
       )}
+
+      {helpOpen && <HelpOverlay onClose={() => setHelpOpen(false)} />}
 
       {W.territoryOpen && <TerritoryOverlay territories={[HOME_TERRITORY]} touches={terr.touches} agents={agents} now={now} onClose={noop} replay />}
       {W.warRoomOpen && <WarRoom lanes={history.lanes} start={history.start} now={now} onClose={noop} replay />}

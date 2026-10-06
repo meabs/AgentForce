@@ -35,3 +35,29 @@
 .hud-tool--demo:hover { background: rgba(80, 52, 0, 0.9); color: #fff3d6; box-shadow: 0 0 14px rgba(255, 180, 40, 0.45); }
 .hud-tool--demo .hud-tool__icon { color: var(--amber); }
 .hud-tool--demo.is-active { background: var(--amber); color: #201400; }
+
+/* ---------- usability pass */
+.hud-tool { font-size: 10px; padding: 4px 8px; min-height: 26px; }
+.hud-tool__icon.gi { font-size: 13px; }
+.hud-view { display: inline-flex; gap: 2px; margin-right: 4px; }
+.hud-tool--view { color: #dff6ff; }
+.hud-tool--help { color: var(--amber); border-color: rgba(255, 180, 40, 0.55); }
+.hud-tool--help .gi { color: var(--amber); }
+@media (max-width: 1440px) {
+  .hud-tool kbd { display: none; }
+}
+@media (max-width: 1279px) {
+  .hud-toolbar { gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+}
+@media (max-width: 640px) {
+  .hud-toolbar { justify-content: center; }
+  .hud-tool { min-height: 36px; min-width: 40px; justify-content: center; padding: 4px 7px; }
+  .hud-tool:not(.hud-tool--view) .hud-tool__label { display: none; }
+  .hud-tool__icon { font-size: 14px; }
+}
+@media (max-width: 640px) {
+  .hud-toolbar { flex-wrap: nowrap; gap: 3px; }
+  .hud-tool[aria-label='Bridge hum ambience'] { display: none; }
+  .hud-tool { min-width: 36px; padding: 4px 6px; }
+  .hud-view { margin-right: 2px; }
+}
