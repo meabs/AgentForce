@@ -441,3 +441,42 @@
 .unit-marker .unit-label { pointer-events: auto; cursor: pointer; }
 .unit-marker:hover .unit-label { border-color: var(--amber); }
 .unit-marker:focus-visible .unit-label { outline: 1px solid var(--amber); outline-offset: 2px; }
+
+/* ---------- warp-in + completion bursts ---------- */
+.unit-marker__warp {
+  position: absolute;
+  left: -40px;
+  top: -40px;
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(0, 229, 255, 0.7) 25%, transparent 60%);
+  animation: warp-flash 0.9s ease-out forwards;
+}
+@keyframes warp-flash {
+  0% { transform: scale(0.1, 3); opacity: 1; }
+  40% { transform: scale(1.4, 0.6); opacity: 0.9; }
+  100% { transform: scale(2.2, 0.2); opacity: 0; }
+}
+.unit-marker__burst {
+  position: absolute;
+  left: -60px;
+  top: -24px;
+  width: 120px;
+  height: 48px;
+  border-radius: 50%;
+  pointer-events: none;
+  border: 3px solid #3dff9a;
+  box-shadow: 0 0 30px #3dff9a, inset 0 0 20px rgba(61, 255, 154, 0.6);
+  animation: burst-ring 1.6s ease-out 2 forwards;
+}
+.unit-marker__burst--alert {
+  border-color: #ff3b5c;
+  box-shadow: 0 0 30px #ff3b5c, inset 0 0 20px rgba(255, 59, 92, 0.6);
+  animation: burst-ring 0.8s ease-out 4 forwards;
+}
+@keyframes burst-ring {
+  0% { transform: scale(0.3); opacity: 1; }
+  100% { transform: scale(2.4); opacity: 0; }
+}

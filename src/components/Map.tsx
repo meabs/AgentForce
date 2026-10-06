@@ -1,10 +1,22 @@
+import { memo } from 'react';
 import type { Agent } from '../types';
+import { heat, MAP_MAX, MAP_MIN, type Territory, type Touch } from '../lib/territory';
 import './Map.css';
+import './Territory.css';
+
+export interface MapFog {
+  territory: Territory;
+  touches: Record<string, Touch> | undefined;
+  now: number;
+}
 
 interface MapProps {
   agents: Agent[];
   selectedId: string | null;
   onSelect: (id: string) => void;
+  fog?: MapFog;
+  /** One-shot effects per unit id: completion burst or alert pulse */
+  bursts?: Record<string, 'done' | 'alert'>;
 }
 
 /** Project flat map coords (0-100) onto the isometric ground plane (screen %). */
@@ -34,7 +46,38 @@ const LINKS: Array<[number, number]> = [
   [0, 3],
 ];
 
-export function Map({ agents, selectedId, onSelect }: MapProps) {
+/** Fog-of-war tiles projected onto the isometric ground plane. */
+const FogLayer = memo(function FogLayer({ territory, touches, now }: MapFog) {
+  const step = (MAP_MAX - MAP_MIN) / territory.size;
+  return (
+    <g className="fog-layer">
+      {territory.tiles.map((t) => {
+        const x0 = MAP_MIN + t.gx * step;
+        const y0 = MAP_MIN + t.gy * step;
+        const pts = [project(x0, y0), project(x0 + step, y0), project(x0 + step, y0 + step), project(x0, y0 + step)]
+          .map((p) => `${p.left.toFixed(2)},${p.top.toFixed(2)}`)
+          .join(' ');
+        const touch = t.path ? touches?.[t.path] : undefined;
+        if (!touch) return <polygon key={t.i} points={pts} className={`fog-tile fog-tile--${t.path ? 'fog' : 'void'}`} />;
+        const h = heat(touch.at, now);
+        const hot = now - touch.at < 5000;
+        return (
+          <polygon
+            key={t.i}
+            points={pts}
+            className={`fog-tile fog-tile--lit${hot ? ' fog-tile--hot' : ''}`}
+            fill={touch.color}
+            fillOpacity={0.06 + 0.3 * h}
+            stroke={touch.color}
+            strokeOpacity={0.25 + 0.5 * h}
+          />
+        );
+      })}
+    </g>
+  );
+});
+
+export function Map({ agents, selectedId, onSelect, fog, bursts }: MapProps) {
   return (
     <div className="tactical-map" aria-label="Tactical operations map">
       <div className="tactical-map__bg" />
@@ -47,6 +90,7 @@ export function Map({ agents, selectedId, onSelect }: MapProps) {
 
       <div className="tactical-map__overlay">
         <svg className="tactical-map__links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden>
+          {fog && <FogLayer territory={fog.territory} touches={fog.touches} now={fog.now} />}
           {LINKS.map(([a, b]) => {
             const p = project(STRUCTURES[a].x, STRUCTURES[a].y);
             const q = project(STRUCTURES[b].x, STRUCTURES[b].y);
@@ -67,6 +111,19 @@ export function Map({ agents, selectedId, onSelect }: MapProps) {
             );
           })}
         </svg>
+
+        {fog?.territory.districts
+          .filter((d) => d.count >= 4)
+          .map((d) => {
+            const p = project(d.x, d.y);
+            const lit = fog.territory.files.filter((f) => fog.territory.byPath[f].dir === d.dir && fog.touches?.[f]).length;
+            return (
+              <div key={d.dir} className="fog-district" style={{ left: `${p.left}%`, top: `${p.top}%` }}>
+                {d.label}
+                <b>{Math.round((lit / d.count) * 100)}%</b>
+              </div>
+            );
+          })}
 
         {STRUCTURES.map((s, i) => {
           const p = project(s.x, s.y);
@@ -97,6 +154,8 @@ export function Map({ agents, selectedId, onSelect }: MapProps) {
               onClick={() => onSelect(agent.id)}
               aria-label={`${agent.name}, ${agent.status}`}
             >
+              <span className="unit-marker__warp" />
+              {bursts?.[agent.id] && <span key={bursts[agent.id]} className={`unit-marker__burst unit-marker__burst--${bursts[agent.id]}`} />}
               <span className="unit-marker__ring" />
               <span className="unit-marker__beacon" />
               <span className="unit-marker__ship" />

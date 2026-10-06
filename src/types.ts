@@ -13,11 +13,27 @@ export interface Agent {
   tokens: number;
   x: number;
   y: number;
+  /** Optimistic placeholder while a launch request is in flight */
+  pending?: boolean;
   /** Local commander hold (ticker paused) */
   held?: boolean;
   retreated?: boolean;
   /** Set when the unit is driven by a live feed */
   live?: { rawState: string; url: string; updatedAt: string; id: string };
+  /** Cursor cloud agent id (bc-…) when this unit is commandable through the LIVE COMMAND UPLINK */
+  cloudId?: string;
+  /** Latest data from the uplink bridge for real units */
+  cloud?: {
+    rawStatus: string;
+    url: string;
+    repo?: string;
+    ref?: string;
+    branch?: string;
+    prUrl?: string;
+    summary?: string;
+    createdAt?: string;
+    updatedAt?: string;
+  };
 }
 
 export interface ActivityEntry {

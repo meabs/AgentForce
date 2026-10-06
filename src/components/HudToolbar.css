@@ -1,0 +1,37 @@
+.hud-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  pointer-events: auto;
+}
+.hud-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  font: 9px var(--font-mono);
+  letter-spacing: 0.14em;
+  color: rgba(0, 229, 255, 0.85);
+  background: rgba(0, 24, 36, 0.8);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  cursor: pointer;
+  text-transform: uppercase;
+  clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+}
+.hud-tool:hover { background: rgba(0, 60, 84, 0.9); color: #e8fbff; box-shadow: 0 0 12px rgba(0, 229, 255, 0.35); }
+.hud-tool kbd {
+  font: 8px var(--font-mono);
+  padding: 0 3px;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  color: rgba(0, 229, 255, 0.6);
+}
+.hud-tool__icon { font-size: 10px; }
+.hud-tool.is-on .hud-tool__icon { color: #3dff9a; text-shadow: 0 0 6px #3dff9a; }
+.hud-tool.is-off { color: rgba(160, 180, 190, 0.7); border-color: rgba(160, 180, 190, 0.3); }
+.hud-tool.is-active { background: var(--cyan); color: #001018; }
+.hud-tool.is-active kbd { color: #003040; border-color: #003040; }
+.hud-tool--demo { color: var(--amber); border-color: rgba(255, 180, 40, 0.55); background: rgba(40, 26, 0, 0.7); }
+.hud-tool--demo:hover { background: rgba(80, 52, 0, 0.9); color: #fff3d6; box-shadow: 0 0 14px rgba(255, 180, 40, 0.45); }
+.hud-tool--demo .hud-tool__icon { color: var(--amber); }
+.hud-tool--demo.is-active { background: var(--amber); color: #201400; }

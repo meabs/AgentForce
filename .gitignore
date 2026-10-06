@@ -9,6 +9,7 @@ lerna-debug.log*
 
 node_modules
 dist
+dist-demo
 dist-ssr
 *.local
 
@@ -25,3 +26,16 @@ dist-ssr
 
 # local cursor status bridge
 .cursor-bridge/
+
+# env files: secrets live here (CURSOR_API_KEY). Only the example is tracked.
+.env
+.env.*
+!.env.example
+
+# local capture output (README assets live in media/)
+/morning-*.png
+/morning-demo.*
+.capture-video/
+test-results/
+playwright-report/
+.playwright-mcp/
