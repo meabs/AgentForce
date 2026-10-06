@@ -186,6 +186,13 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v.trim() ? v : undefined;
 }
 
+/** v0 GET returns `github.com/owner/repo` while launch echoes `https://github.com/owner/repo`; normalise. */
+function repoUrl(v: unknown): string | undefined {
+  const s = str(v)?.trim();
+  if (!s) return undefined;
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(s) ? s : `https://${s.replace(/^\/+/, '')}`;
+}
+
 // ---- v0 adapters
 function fromV0(a: any): AgentDTO {
   return {
@@ -194,7 +201,7 @@ function fromV0(a: any): AgentDTO {
     status: String(a.status ?? 'UNKNOWN').toUpperCase(),
     summary: str(a.summary),
     url: str(a.target?.url) ?? `https://cursor.com/agents?id=${a.id}`,
-    repo: str(a.source?.repository),
+    repo: repoUrl(a.source?.repository),
     ref: str(a.source?.ref),
     branch: str(a.target?.branchName),
     prUrl: str(a.target?.prUrl),
@@ -213,7 +220,7 @@ function fromV1(a: any, run?: any): AgentDTO {
     status: String(run?.status ?? a.status ?? 'UNKNOWN').toUpperCase(),
     summary: str(run?.result),
     url: str(a.url) ?? `https://cursor.com/agents/${a.id}`,
-    repo: str(a.repos?.[0]?.url),
+    repo: repoUrl(a.repos?.[0]?.url),
     ref: str(a.repos?.[0]?.startingRef),
     branch: str(b?.branch),
     prUrl: str(b?.prUrl),
@@ -266,12 +273,15 @@ const api = {
       const d = await upstream(env, 'POST', '/v0/agents', {
         prompt: { text: prompt },
         source: { repository: repo, ...(ref ? { ref } : {}) },
+        // Fleet units report back; they never open PRs on their own.
+        target: { autoCreatePr: false },
       });
       return fromV0(d);
     }
     const d = await upstream(env, 'POST', '/v1/agents', {
       prompt: { text: prompt },
       repos: [{ url: repo, ...(ref ? { startingRef: ref } : {}) }],
+      autoCreatePR: false,
     });
     return fromV1(d.agent ?? d, d.run);
   },

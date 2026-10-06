@@ -43,10 +43,11 @@ real orders.
 | Archive tray UI | 🟢 Tested, working | Board-only, saved in `localStorage` |
 | Sound effects and voice lines | 🟡 Code runs, never heard | The WebAudio and SpeechSynthesis code executes, but nobody has listened to it yet. Headless capture had no audio, and the demo video is silent |
 | `npm run build` | 🟢 Passes | |
-| Live uplink: list real cloud agents (read-only) | 🟢 Verified on the real Cursor API | Checked on 2026-10-06; 20 real agents came back. That check covered the roster listing, so treat per-agent status and transcript views as lightly tested |
-| ASSIGN MISSION / APPROVE PLAN (follow-up) | 🟡 Fake server only | Tested against a fake local API server, **not yet against the real Cursor API** |
-| RETREAT (stop) | 🟡 Fake server only | Same: fake local API server only |
-| SUMMON → LAUNCH CLOUD AGENT (launch) | 🟡 Fake server only | Same: fake local API server only |
+| Live uplink: list real cloud agents (read-only) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: `GET /api/agents` answered 200 in about 0.5 s with real agents |
+| Live uplink: per-agent status and transcript | 🟢 Verified on the real Cursor API | Verified on 2026-10-06 with a throwaway test agent: status polling saw CREATING → RUNNING → FINISHED, and the transcript returned every user and assistant message |
+| SUMMON → LAUNCH CLOUD AGENT (launch) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: 201 in about 9 s, agent came back as CREATING with its id, URL and branch name. The bridge now sends `autoCreatePr: false`; the test agent pushed no branch and opened no PR |
+| ASSIGN MISSION / APPROVE PLAN (follow-up) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: 200 in under 1 s on a FINISHED agent, the agent went back to RUNNING and replied. APPROVE PLAN uses the same follow-up route, so it is covered by the same test. Heads-up: the API keeps reporting the old FINISHED status for 2 to 8 s after a follow-up; the board now holds the unit at RUNNING through that gap (code fix, builds green, not yet watched live in the browser) |
+| RETREAT (stop) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: stop on a RUNNING agent answered 200, the run ended about 6 s later without replying. v0 then reports the agent as FINISHED (not STOPPED). Stop on an already finished agent also answers 200 |
 | v1 API mode (`CURSOR_API_VERSION=v1`) | 🟡 Fake server only | Endpoints implemented, tested against the fake server only. **v0 is the default** |
 
 **Known limits of the hull:**
@@ -55,7 +56,24 @@ real orders.
 - **Token and cost meter** figures are illustrative estimates, not real billing data.
 - **The command uplink needs a server.** The bridge only exists under `npm run dev` or `npm run preview`. Static builds are replay-only (`dist-demo/`), and a `dist/` folder on a static host has no uplink.
 - **HOLD only freezes the board.** The Cursor API has no pause, so a held cloud agent keeps running (and spending) in the cloud.
-- **Real orders cost real usage.** Launches and follow-ups spend Cursor credits. Since those paths have only flown in the simulator, try your first real sorties on a throwaway repo.
+- **Real orders cost real usage.** Launches and follow-ups spend Cursor credits. The v0 write paths have now flown against the real API (see the live sortie log below), but a summoned unit is a real agent with write access to the repo you point it at.
+- **Status lags behind orders.** After a follow-up or a stop the API takes a few seconds to report the new state. The board covers the follow-up gap; after RETREAT expect RUNNING for up to about 6 s before FINISHED.
+
+**Live sortie log (2026-10-06, v0, real Cursor API, throwaway agent on `meabs/AgentForce@main`):**
+
+| Order (bridge route) | Result |
+|---|---|
+| `GET /api/agents` | 200, real roster returned. Cross-origin POST refused with 403, non-JSON POST refused with 415 |
+| `POST /api/agents` (SUMMON) | 201 in 9.3 s, status CREATING. Polling: RUNNING, then FINISHED, about 26 s after creation. Reply: "Unit ready." |
+| `GET /api/agents/:id/conversation` | 200 in 0.3 s, user prompt and assistant reply returned |
+| `POST /api/agents/:id/followup` (ASSIGN / APPROVE) | 200 in 0.9 s. Status stayed FINISHED for about 1 to 8 s, then RUNNING, then FINISHED. Reply: "Orders received." |
+| `POST /api/agents/:id/stop` (RETREAT) | Sent about 4 s after a deliberately long run showed RUNNING: 200 in 0.3 s, RUNNING for about 6 s more, then FINISHED with no reply |
+| Bad id / unknown id | 400 `BAD_ID` / 404 `UPSTREAM_404` |
+| Cleanup | Test agent stopped, then permanently deleted through the API (it lingers in the v0 list as EXPIRED). No branch and no PR appeared on GitHub |
+
+![Live test: the throwaway test agent docked in the archive tray as FINISHED](media/live-test.png)
+
+<sub>▲ **LIVE SORTIE.** The throwaway "Fleet uplink test" agent, docked in the archive tray as FINISHED after its live run.</sub>
 
 ---
 
@@ -122,7 +140,7 @@ Voice lines use your browser's built-in SpeechSynthesis voice, pitched down for 
 
 - Finished cloud agents (`FINISHED`, `EXPIRED`, `CANCELLED`, ...) no longer clutter the roster. Ones that finished before you opened the board dock straight away; ones that finish while you watch get a fanfare, a victory lap of about 45 seconds, then slide down into the **ARCHIVE TRAY** at the bottom of the roster.
 - Open the tray to see each parked unit's status, age and PR link. Click a card to open its cockpit, **RECALL** to put it back on the roster. Any unit can be parked by hand with **⇣ ARCHIVE** in its cockpit. It is all board-only (saved in `localStorage`); nothing is sent to the agent.
-- **Instant RUNNING:** pressing LAUNCH now closes the dialog straight away and warps in a RUNNING placeholder (`CLOUD-····`) while the API call is in flight. It becomes the real unit the moment the agent id comes back, or turns red with the error (and a klaxon) if the launch fails. Your prompt is kept for the retry. (So far LAUNCH has only been flown against a fake local API server, not the real Cursor API.)
+- **Instant RUNNING:** pressing LAUNCH now closes the dialog straight away and warps in a RUNNING placeholder (`CLOUD-····`) while the API call is in flight. It becomes the real unit the moment the agent id comes back, or turns red with the error (and a klaxon) if the launch fails. Your prompt is kept for the retry. (LAUNCH was verified against the real Cursor API on 2026-10-06.)
 - The roster tabs (ALL / WORKING / IDLE+ALERT) now actually filter.
 
 ### ☰ WAR ROOM (`W`)
@@ -250,7 +268,7 @@ Select any unit to open its cockpit, which slides in from the right. It shows:
 | **SUMMON AGENT** | Opens the Summon dialog. **DRILL UNIT** warps in a new mock unit (PROBE-11, VECTOR-2, RELAY-4…); **LAUNCH CLOUD AGENT** starts a real one via the [uplink](#-live-command-uplink). Either way the new unit is selected and its cockpit opens. | `S` |
 | **Open / close** | `Enter` opens the selected unit's cockpit. `Esc` closes the mission picker first, then the cockpit. ✕ also closes it. | `Enter` / `Esc` |
 
-Every order adds a line to the unit's terminal and to the activity feed. On simulated units all orders are **local to the board**. On real units (CURSOR-7 and any `CLOUD-xxxx` unit) ASSIGN, APPROVE, RETREAT and SUMMON are wired to drive the real cloud agent once the [LIVE COMMAND UPLINK](#-live-command-uplink) is armed, and fall back to local board orders when it isn't. (Those write orders have so far only been tested against a fake local API server; see [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested).)
+Every order adds a line to the unit's terminal and to the activity feed. On simulated units all orders are **local to the board**. On real units (CURSOR-7 and any `CLOUD-xxxx` unit) ASSIGN, APPROVE, RETREAT and SUMMON are wired to drive the real cloud agent once the [LIVE COMMAND UPLINK](#-live-command-uplink) is armed, and fall back to local board orders when it isn't. (On the default v0 API those write orders were verified against the real Cursor API on 2026-10-06; see [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested).)
 
 ## 📡 LIVE UPLINK: CURSOR-7
 
@@ -334,9 +352,9 @@ new ones onto a repo, hand them follow-up orders, approve their plans,
 or pull them back with a stop order. Their transcripts stream straight
 into the cockpit terminal.
 
-Flight status: the read-only roster has flown against the real Cursor
-API. Summon, follow-up and stop have only flown in the simulator (a fake
-local API) so far. Fly your first real sorties with care.
+Flight status: roster, status, transcript, summon, follow-up and stop
+all flew against the real Cursor API (v0) on 2026-10-06. The v1 mode has
+only flown in the simulator. Real orders spend real credits.
 
 The key stays aboard the mothership (the dev server). The browser never
 sees it.
@@ -374,7 +392,7 @@ sees it.
 | `GET /api/agents/:id/conversation` | `GET /v0/agents/{id}/conversation` | Transcript streamed into the terminal |
 | `POST /api/agents/:id/followup` `{text}` | `POST /v0/agents/{id}/followup` | **ASSIGN MISSION**, **APPROVE PLAN**, free text in the console |
 | `POST /api/agents/:id/stop` | `POST /v0/agents/{id}/stop` | **RETREAT** (after a confirm dialog) |
-| `POST /api/agents` `{prompt, repo, ref}` | `POST /v0/agents` | **SUMMON** → LAUNCH CLOUD AGENT |
+| `POST /api/agents` `{prompt, repo, ref}` | `POST /v0/agents` (with `target.autoCreatePr: false`) | **SUMMON** → LAUNCH CLOUD AGENT |
 
 Set `CURSOR_API_VERSION=v1` to fly on the newer runs-based API instead (`/v1/agents`, `/v1/agents/{id}/runs`, `.../runs/{runId}/cancel`). On v1 there is no transcript endpoint, so the terminal shows each run's status and final result instead of the full chat, and RETREAT cancels the active run for good (a follow-up starts a fresh run). v1 mode is implemented but has only been tested against a fake local API server, which is why v0 stays the default.
 
