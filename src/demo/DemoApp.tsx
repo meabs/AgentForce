@@ -17,7 +17,7 @@ import { useTerritoryState } from '../hooks/useTerritory';
 import { useRunHistory } from '../hooks/useRunHistory';
 import type { UplinkInfo } from '../hooks/useCloudAgents';
 import { HOME_KEY, HOME_TERRITORY } from '../lib/territory';
-import { say, sfx, spoken, toggleMuted, unlock, VOICE } from '../lib/sfx';
+import { say, sfx, spoken, toggleAmbient, toggleMuted, unlock, VOICE } from '../lib/sfx';
 import type { ActivityEntry, Agent, TermKind, TermLine } from '../types';
 import '../App.css';
 import './demo.css';
@@ -182,7 +182,10 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
   const onExit = useCallback(() => exitProp?.(), [exitProp]);
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const loop = params.get('loop') === '1' || (!canExit && params.get('loop') !== '0');
-  const autostart = params.get('autostart') !== '0';
+  // In-app replay (?demo=1) auto-engages after a countdown (headless capture, kiosk loops).
+  // The standalone build (GitHub Pages) waits for an ENGAGE click so audio can unlock on that gesture;
+  // ?autostart=1 opts back in there.
+  const autostart = canExit ? params.get('autostart') !== '0' : params.get('autostart') === '1';
   const [phase, setPhase] = useState<'standby' | 'playing' | 'ended'>('standby');
   const [countdown, setCountdown] = useState(5);
   const [, setFrame] = useState(0);
@@ -565,11 +568,12 @@ export default function DemoApp({ onExit: exitProp }: { onExit?: () => void }) {
     return () => window.clearTimeout(t);
   }, [phase, loop, engage]);
 
-  // keyboard: space pause, R restart, Esc exit, M mute, Enter engage
+  // keyboard: space pause, R restart, Esc exit, M mute, B bridge hum, Enter engage
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       if (k === 'm') return toggleMuted();
+      if (k === 'b') return toggleAmbient();
       if (k === 'escape' && !world.current.territoryOpen && !world.current.warRoomOpen) return onExit();
       if (k === 'r') return engage();
       if ((k === 'enter' || k === ' ') && phase !== 'playing') {

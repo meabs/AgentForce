@@ -34,7 +34,11 @@ export const OFFLINE_MSG = 'Uplink offline: set CURSOR_API_KEY';
 
 export const isCloudId = (id: string | undefined | null): id is string => !!id && /^bc[-_]/.test(id);
 
+/** The static demo build (GitHub Pages) has no bridge: never hit /api, just report offline. */
+const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
+
 async function call<T>(method: 'GET' | 'POST', path: string, body?: unknown, timeoutMs = 25_000): Promise<UplinkResult<T>> {
+  if (STATIC_DEMO) return { ok: false, status: 0, code: 'STATIC_DEMO', error: 'Uplink unavailable in the static demo build' };
   try {
     const res = await fetch(path, {
       method,
