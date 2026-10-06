@@ -1,5 +1,7 @@
 # ◆ AGENT FLEET COMMAND ◆
 
+[![Deploy demo](https://github.com/meabs/AgentForce/actions/workflows/pages.yml/badge.svg)](https://github.com/meabs/AgentForce/actions/workflows/pages.yml)
+
 > **Your coding agents, deployed as a holographic strike fleet.** This is a real-time strategy command board for AI agents, with cyan/amber HUD, scanlines, radar sweep and all.
 
 <p align="center">
