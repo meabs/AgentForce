@@ -107,6 +107,13 @@ function ensure(): AudioContext | null {
 
 /** Start audio inside a user gesture. This is deliberately best-effort on iOS. */
 export function unlock(): Promise<void> {
+  try {
+    // Calling resume while the tap is active also releases a paused iOS speech
+    // queue. It is harmless in browsers without speech synthesis.
+    window.speechSynthesis?.resume();
+  } catch {
+    /* speech is optional */
+  }
   const c = ensure();
   if (!c || c.state !== 'suspended') return Promise.resolve();
   return c.resume().catch(() => {
