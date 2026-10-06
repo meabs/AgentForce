@@ -7,6 +7,13 @@ const LIST_EVERY_TICKS = 5; // ~15s
 const MAX_LISTED_UNITS = 5;
 const TOUCH_WINDOW_MS = 120_000;
 const MAX_STATUS_PER_TICK = 6;
+/**
+ * Verified live (2026-10-06, v0): right after a follow-up is accepted the API keeps reporting the
+ * previous terminal status (FINISHED) for roughly 2 to 8 s before it flips to RUNNING. Hold the
+ * optimistic RUNNING for this long so the unit doesn't bounce back to IDLE and fire a false
+ * "mission complete".
+ */
+const FOLLOWUP_GRACE_MS = 20_000;
 
 export type UplinkPhase = 'checking' | 'online' | 'offline' | 'error';
 
@@ -54,6 +61,8 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
   const goneRef = useRef<Set<string>>(new Set());
   const tickRef = useRef(0);
   const busyRef = useRef(false);
+  /** id -> time a follow-up was accepted; stale terminal statuses are ignored until RUNNING is seen. */
+  const pendingRunRef = useRef<Record<string, number>>({});
 
   const noteFailure = useCallback((r: Extract<UplinkResult<unknown>, { ok: false }>) => {
     if (r.status === 503 || r.code === 'NO_API_KEY') {
@@ -65,6 +74,12 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
 
   const upsert = useCallback((a: CloudAgent) => {
     if (optsRef.current.heldIds.has(a.id) && agentsRef.current[a.id]) return;
+    const pendingAt = pendingRunRef.current[a.id];
+    if (pendingAt) {
+      const st = mapCursorState(a.status);
+      if (st === 'RUNNING' || st === 'BLOCKED' || Date.now() - pendingAt > FOLLOWUP_GRACE_MS) delete pendingRunRef.current[a.id];
+      else a = { ...a, status: 'RUNNING' }; // upstream hasn't caught up with the new run yet
+    }
     setAgents((prev) => {
       const old = prev[a.id];
       if (old && old.status === a.status && old.summary === a.summary && old.updatedAt === a.updatedAt && old.name === a.name)
@@ -200,6 +215,7 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
         return r;
       }
       touch(id);
+      pendingRunRef.current[id] = Date.now();
       const a = agentsRef.current[id];
       if (a) upsert({ ...a, status: 'RUNNING', updatedAt: new Date().toISOString() });
       window.setTimeout(() => void refresh(id), 1200);
@@ -215,6 +231,7 @@ export function useCloudAgents({ extraIds, focusId, heldIds, onMessages }: Optio
         noteFailure(r);
         return r;
       }
+      delete pendingRunRef.current[id];
       touch(id);
       window.setTimeout(() => void refresh(id), 1200);
       return r;
