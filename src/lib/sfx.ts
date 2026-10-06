@@ -110,11 +110,24 @@ function ensure(): AudioContext | null {
   return ctx;
 }
 
-export function unlock() {
+/** Start audio inside a user gesture. This is deliberately best-effort on iOS. */
+export function unlock(): Promise<void> {
+  try {
+    // Calling resume while the tap is active also releases a paused iOS speech
+    // queue. It is harmless in browsers without speech synthesis.
+    window.speechSynthesis?.resume();
+  } catch {
+    /* speech is optional */
+  }
   const c = ensure();
-  if (!c) return;
-  if (c.state === 'suspended') void c.resume().then(syncAmbient, () => {});
-  else syncAmbient();
+  if (!c) return Promise.resolve();
+  if (c.state === 'suspended') {
+    return c.resume().then(syncAmbient, () => {
+      // The replay remains usable when Safari rejects an audio resume.
+    });
+  }
+  syncAmbient();
+  return Promise.resolve();
 }
 
 if (typeof window !== 'undefined') {
@@ -584,6 +597,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
 }
 
 let lastVoiceAt = 0;
+let voiceWatchdog: number | undefined;
 
 /**
  * Short robotic voice line. Low pitch + clipped rate reads as "ship computer".
@@ -605,7 +619,21 @@ export function say(text: string, opts: { force?: boolean; rate?: number; pitch?
     u.pitch = opts.pitch ?? 0.35;
     u.rate = opts.rate ?? 1.02;
     u.volume = 0.9;
+    u.onend = () => {
+      if (voiceWatchdog) window.clearTimeout(voiceWatchdog);
+      voiceWatchdog = undefined;
+    };
     synth.speak(u);
+    // Safari can leave an utterance in "speaking" forever. Nothing waits for
+    // speech, but clearing it keeps later cues from becoming a stuck queue.
+    if (voiceWatchdog) window.clearTimeout(voiceWatchdog);
+    voiceWatchdog = window.setTimeout(() => {
+      try {
+        synth.cancel();
+      } catch {
+        /* speech engine unavailable */
+      }
+    }, 8_000);
   } catch {
     /* speech engine unavailable (headless, locked down): stay silent */
   }

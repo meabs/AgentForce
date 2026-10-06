@@ -112,3 +112,22 @@
     transform: scale(0.8);
   }
 }
+
+@media (max-width: 1279px) {
+  .top-bar {
+    position: absolute;
+    height: 50px;
+    padding: 0 10px;
+    grid-template-columns: 1fr auto;
+  }
+
+  .top-bar__left { display: none; }
+  .top-bar__right { min-width: 0; }
+  .mission-banner__core { padding: 5px 14px; }
+  .mission-banner__core h1 { font-size: clamp(9px, 2.6vw, 13px); letter-spacing: clamp(0.08em, 0.7vw, 0.24em); }
+}
+
+@media (max-width: 640px) {
+  .top-bar__right { display: none; }
+  .top-bar { grid-template-columns: 1fr; justify-items: center; }
+}
