@@ -1,13 +1,16 @@
 /**
- * FLEET AUDIO: every sound here is synthesized live with WebAudio (no samples, no assets),
- * and the "voice lines" use the browser's own SpeechSynthesis engine.
+ * FLEET AUDIO: five key moments (select, ack, launch, complete, alert) play short sampled
+ * clips from public/sfx/ (Pixabay Content License, see public/sfx/CREDITS.md). Everything
+ * else, and any clip that fails to load, falls back to sounds synthesized live with WebAudio.
+ * The "voice lines" use the browser's own SpeechSynthesis engine.
  *
  * Browsers only allow audio after a user gesture, so the context is created lazily and
- * resumed on the first pointer / key press. Mute state persists in localStorage.
+ * resumed on the first pointer / key press. Mute and ambient state persist in localStorage.
  */
 import { useSyncExternalStore } from 'react';
 
 const STORE_KEY = 'afc.sound';
+const AMBIENT_KEY = 'afc.ambient';
 type Listener = () => void;
 
 let ctx: AudioContext | null = null;
@@ -46,10 +49,12 @@ export function setMuted(m: boolean) {
     } catch {
       /* ignore */
     }
+    stopAllSamples();
   } else {
     unlock();
     window.setTimeout(() => sfx.ack(), 30);
   }
+  syncAmbient();
   emit();
 }
 
@@ -107,7 +112,9 @@ function ensure(): AudioContext | null {
 
 export function unlock() {
   const c = ensure();
-  if (c && c.state === 'suspended') void c.resume().catch(() => {});
+  if (!c) return;
+  if (c.state === 'suspended') void c.resume().then(syncAmbient, () => {});
+  else syncAmbient();
 }
 
 if (typeof window !== 'undefined') {
@@ -197,15 +204,281 @@ function noise(c: AudioContext, o: { at?: number; dur: number; vol?: number; fro
   src.stop(t0 + o.dur + 0.05);
 }
 
+// ---------------------------------------------------------------- samples
+
+/**
+ * Sampled clips. Each slot has a playback gain (files are pre-levelled with ffmpeg, so these
+ * only balance them against each other and the synth), a minimum gap between plays, and
+ * "steal": a new play quickly fades out the previous instance of the same slot instead of
+ * stacking on top of it.
+ */
+const SAMPLES = {
+  select: { file: 'select.mp3', gain: 0.38, gap: 70, steal: true },
+  ack: { file: 'ack.mp3', gain: 0.5, gap: 110, steal: true },
+  launch: { file: 'launch.mp3', gain: 0.55, gap: 350, steal: false },
+  complete: { file: 'complete.mp3', gain: 0.55, gap: 1200, steal: true },
+  alert: { file: 'alert.mp3', gain: 0.6, gap: 2500, steal: true },
+} as const;
+type SampleName = keyof typeof SAMPLES;
+
+const SFX_BASE = `${import.meta.env.BASE_URL}sfx/`;
+const buffers: Partial<Record<SampleName, AudioBuffer>> = {};
+const failed = new Set<SampleName>();
+const voices: Partial<Record<SampleName, { src: AudioBufferSourceNode; g: GainNode }>> = {};
+let preloadStarted = false;
+
+function decoder(): BaseAudioContext | null {
+  // Decode with an OfflineAudioContext so clips are ready before the first user gesture
+  // (decoding does not need an unlocked context). Fall back to the live context.
+  const OAC =
+    window.OfflineAudioContext ??
+    (window as unknown as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  if (OAC) {
+    try {
+      return new OAC(1, 1, 44100);
+    } catch {
+      /* fall through */
+    }
+  }
+  return ensure();
+}
+
+async function loadBuffer(file: string): Promise<AudioBuffer> {
+  const res = await fetch(SFX_BASE + file);
+  if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
+  const data = await res.arrayBuffer();
+  const dec = decoder();
+  if (!dec) throw new Error('no audio decoder');
+  return await dec.decodeAudioData(data);
+}
+
+/** Fetch and decode every one-shot clip once. Safe to call repeatedly. */
+export function preloadSamples() {
+  if (preloadStarted || typeof window === 'undefined' || typeof fetch === 'undefined') return;
+  preloadStarted = true;
+  for (const name of Object.keys(SAMPLES) as SampleName[]) {
+    loadBuffer(SAMPLES[name].file).then(
+      (b) => {
+        buffers[name] = b;
+      },
+      (err) => {
+        failed.add(name);
+        console.warn(`[sfx] sample "${name}" unavailable, using synth fallback`, err);
+      },
+    );
+  }
+}
+
+/** Which clips decoded, which failed, which are still loading (handy in the devtools console). */
+export function sampleStatus(): Record<string, 'ready' | 'failed' | 'loading' | 'idle'> {
+  const out: Record<string, 'ready' | 'failed' | 'loading' | 'idle'> = {};
+  for (const name of Object.keys(SAMPLES) as SampleName[])
+    out[name] = buffers[name] ? 'ready' : failed.has(name) ? 'failed' : 'loading';
+  out.ambient = ambientBuf ? 'ready' : ambientLoading ? 'loading' : 'idle';
+  return out;
+}
+
+/**
+ * Play a clip. Returns 'played', 'skipped' (muted, locked or rate limited: stay silent) or
+ * 'missing' (clip not loaded: caller should play the synth fallback).
+ */
+function playSample(name: SampleName): 'played' | 'skipped' | 'missing' {
+  const buf = buffers[name];
+  if (!buf) return 'missing';
+  const spec = SAMPLES[name];
+  const c = ready(name, spec.gap);
+  if (!c) return 'skipped';
+  const prev = voices[name];
+  if (prev && spec.steal) {
+    const t = c.currentTime;
+    prev.g.gain.cancelScheduledValues(t);
+    prev.g.gain.setValueAtTime(prev.g.gain.value, t);
+    prev.g.gain.linearRampToValueAtTime(0, t + 0.03);
+    try {
+      prev.src.stop(t + 0.04);
+    } catch {
+      /* already stopped */
+    }
+  }
+  const src = c.createBufferSource();
+  src.buffer = buf;
+  const g = c.createGain();
+  g.gain.value = spec.gain;
+  src.connect(g).connect(master!);
+  const voice = { src, g };
+  voices[name] = voice;
+  src.onended = () => {
+    if (voices[name] === voice) delete voices[name];
+    src.disconnect();
+    g.disconnect();
+  };
+  src.start();
+  return 'played';
+}
+
+/** Muting cuts any clip that is still ringing out. */
+function stopAllSamples() {
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  for (const v of Object.values(voices)) {
+    if (!v) continue;
+    v.g.gain.cancelScheduledValues(t);
+    v.g.gain.setValueAtTime(v.g.gain.value, t);
+    v.g.gain.linearRampToValueAtTime(0, t + 0.03);
+    try {
+      v.src.stop(t + 0.04);
+    } catch {
+      /* already stopped */
+    }
+  }
+}
+
+/** Sample first; synth only when the clip never loaded (or is still loading). */
+function sampleOr(name: SampleName, synth: () => void) {
+  if (playSample(name) === 'missing') synth();
+}
+
+// ---------------------------------------------------------------- ambient hum
+
+const AMBIENT = { file: 'ambient.mp3', gain: 0.3, loopStart: 0.5, loopEnd: 24.5, fade: 1.2 };
+let ambientOn = readAmbient();
+let ambientBuf: AudioBuffer | null = null;
+let ambientLoading: Promise<void> | null = null;
+let ambientVoice: { src: AudioBufferSourceNode; g: GainNode } | null = null;
+const ambientListeners = new Set<Listener>();
+
+function readAmbient() {
+  try {
+    return localStorage.getItem(AMBIENT_KEY) === 'on';
+  } catch {
+    return false;
+  }
+}
+
+function stopAmbientVoice() {
+  const v = ambientVoice;
+  ambientVoice = null;
+  if (!v || !ctx) return;
+  const t = ctx.currentTime;
+  v.g.gain.cancelScheduledValues(t);
+  v.g.gain.setValueAtTime(v.g.gain.value, t);
+  v.g.gain.linearRampToValueAtTime(0, t + AMBIENT.fade * 0.6);
+  try {
+    v.src.stop(t + AMBIENT.fade * 0.6 + 0.05);
+  } catch {
+    /* already stopped */
+  }
+}
+
+/** Start or stop the hum so it matches (ambient on) && !muted && context running. */
+function syncAmbient() {
+  const want = ambientOn && !muted;
+  if (!want) return stopAmbientVoice();
+  if (ambientVoice) return;
+  if (!ambientBuf) {
+    // Only fetched the first time someone turns it on (it is the one larger file).
+    if (!ambientLoading)
+      ambientLoading = loadBuffer(AMBIENT.file).then(
+        (b) => {
+          ambientBuf = b;
+          syncAmbient();
+        },
+        (err) => console.warn('[sfx] ambient hum unavailable', err),
+      );
+    return;
+  }
+  const c = ensure();
+  if (!c || !master || c.state !== 'running') return; // unlock() calls back in once running
+  const src = c.createBufferSource();
+  src.buffer = ambientBuf;
+  src.loop = true;
+  // The file is padded half a second either side of a seamless 24 s loop, so decoder
+  // priming offsets can never land the loop points on a seam.
+  const end = Math.min(AMBIENT.loopEnd, ambientBuf.duration);
+  src.loopStart = Math.min(AMBIENT.loopStart, end - 0.1);
+  src.loopEnd = end;
+  const g = c.createGain();
+  const t = c.currentTime;
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(AMBIENT.gain, t + AMBIENT.fade);
+  src.connect(g).connect(master);
+  src.start(t, src.loopStart);
+  ambientVoice = { src, g };
+}
+
+export function isAmbientOn() {
+  return ambientOn;
+}
+
+export function setAmbient(on: boolean) {
+  ambientOn = on;
+  try {
+    localStorage.setItem(AMBIENT_KEY, on ? 'on' : 'off');
+  } catch {
+    /* private mode: keep it in memory */
+  }
+  if (on) unlock();
+  syncAmbient();
+  ambientListeners.forEach((l) => l());
+}
+
+export function toggleAmbient() {
+  setAmbient(!ambientOn);
+}
+
+export function useAmbient() {
+  return useSyncExternalStore(
+    (l) => {
+      ambientListeners.add(l);
+      return () => ambientListeners.delete(l);
+    },
+    () => ambientOn,
+    () => ambientOn,
+  );
+}
+
+if (typeof window !== 'undefined') preloadSamples();
+
 const NOTE = (n: number) => 440 * Math.pow(2, (n - 69) / 12);
 
+/** Synth fallback for `complete`: a short original brass-ish fanfare (detuned saws through a lowpass). */
+function synthFanfare() {
+  const c = ready('fanfare', 900);
+  if (!c) return;
+  const seq: Array<[number, number, number]> = [
+    [67, 0, 0.14],
+    [72, 0.14, 0.14],
+    [76, 0.28, 0.14],
+    [79, 0.42, 0.5],
+  ];
+  for (const [n, at, dur] of seq) {
+    for (const d of [-7, 7]) tone(c, { type: 'sawtooth', freq: NOTE(n), at, dur, vol: 0.05, detune: d, filter: 2600, attack: 0.02 });
+  }
+  for (const n of [72, 76, 79, 84])
+    tone(c, { type: 'sawtooth', freq: NOTE(n), at: 0.95, dur: 1.1, vol: 0.035, filter: 2200, attack: 0.06 });
+  tone(c, { type: 'sine', freq: NOTE(48), at: 0.95, dur: 1.2, vol: 0.12, attack: 0.04 });
+}
+
+/** Synth fallback for `alert`: alternating two-tone klaxon. */
+function synthKlaxon() {
+  const c = ready('klaxon', 2500);
+  if (!c) return;
+  for (let i = 0; i < 4; i++) {
+    tone(c, { type: 'square', freq: 520, to: 640, at: i * 0.32, dur: 0.16, vol: 0.06, filter: 1500 });
+    tone(c, { type: 'square', freq: 400, at: i * 0.32 + 0.16, dur: 0.16, vol: 0.06, filter: 1300 });
+  }
+  tone(c, { type: 'sine', freq: 70, dur: 1.3, vol: 0.12, attack: 0.05 });
+}
+
 export const sfx = {
-  /** Unit selected: a crisp two-pip blip. */
+  /** Unit selected: console blip sample (synth fallback: a crisp two-pip blip). */
   select() {
-    const c = ready('select', 60);
-    if (!c) return;
-    tone(c, { type: 'square', freq: 1320, dur: 0.05, vol: 0.06, filter: 4000, wet: false });
-    tone(c, { type: 'square', freq: 1980, at: 0.055, dur: 0.07, vol: 0.05, filter: 5000 });
+    sampleOr('select', () => {
+      const c = ready('select', 60);
+      if (!c) return;
+      tone(c, { type: 'square', freq: 1320, dur: 0.05, vol: 0.06, filter: 4000, wet: false });
+      tone(c, { type: 'square', freq: 1980, at: 0.055, dur: 0.07, vol: 0.05, filter: 5000 });
+    });
   },
   /** Soft UI tick for hovers / minor toggles. */
   tick() {
@@ -213,13 +486,15 @@ export const sfx = {
     if (!c) return;
     tone(c, { type: 'triangle', freq: 2600, dur: 0.025, vol: 0.03, wet: false });
   },
-  /** Command acknowledged: rising three-note chirp. */
+  /** Command acknowledged: chirp sample (synth fallback: rising three-note chirp). */
   ack() {
-    const c = ready('ack', 90);
-    if (!c) return;
-    [72, 76, 79].forEach((n, i) =>
-      tone(c, { type: 'square', freq: NOTE(n), at: i * 0.06, dur: 0.09, vol: 0.07, filter: 3200 }),
-    );
+    sampleOr('ack', () => {
+      const c = ready('ack', 90);
+      if (!c) return;
+      [72, 76, 79].forEach((n, i) =>
+        tone(c, { type: 'square', freq: NOTE(n), at: i * 0.06, dur: 0.09, vol: 0.07, filter: 3200 }),
+      );
+    });
   },
   /** HOLD: two descending pips. */
   hold() {
@@ -234,41 +509,24 @@ export const sfx = {
     if (!c) return;
     tone(c, { type: 'sawtooth', freq: 880, to: 180, dur: 0.45, vol: 0.07, filter: 1800 });
   },
-  /** Unit warps in: noise whoosh + rising sine + sparkle. */
+  /** Unit warps in / launch: whoosh sample (synth fallback: noise whoosh + rising sine + sparkle). */
   warp() {
-    const c = ready('warp', 200);
-    if (!c) return;
-    noise(c, { dur: 0.7, vol: 0.18, from: 300, to: 5000, q: 2 });
-    tone(c, { type: 'sine', freq: 160, to: 1400, dur: 0.6, vol: 0.12 });
-    tone(c, { type: 'triangle', freq: NOTE(91), at: 0.55, dur: 0.25, vol: 0.05 });
-    tone(c, { type: 'triangle', freq: NOTE(96), at: 0.62, dur: 0.3, vol: 0.04 });
+    sampleOr('launch', () => {
+      const c = ready('warp', 200);
+      if (!c) return;
+      noise(c, { dur: 0.7, vol: 0.18, from: 300, to: 5000, q: 2 });
+      tone(c, { type: 'sine', freq: 160, to: 1400, dur: 0.6, vol: 0.12 });
+      tone(c, { type: 'triangle', freq: NOTE(91), at: 0.55, dur: 0.25, vol: 0.05 });
+      tone(c, { type: 'triangle', freq: NOTE(96), at: 0.62, dur: 0.3, vol: 0.04 });
+    });
   },
-  /** Agent finished: a short original brass-ish fanfare (detuned saws through a lowpass). */
+  /** Agent finished: success sample (synth fallback: original brass-ish fanfare). */
   fanfare() {
-    const c = ready('fanfare', 900);
-    if (!c) return;
-    const seq: Array<[number, number, number]> = [
-      [67, 0, 0.14],
-      [72, 0.14, 0.14],
-      [76, 0.28, 0.14],
-      [79, 0.42, 0.5],
-    ];
-    for (const [n, at, dur] of seq) {
-      for (const d of [-7, 7]) tone(c, { type: 'sawtooth', freq: NOTE(n), at, dur, vol: 0.05, detune: d, filter: 2600, attack: 0.02 });
-    }
-    for (const n of [72, 76, 79, 84])
-      tone(c, { type: 'sawtooth', freq: NOTE(n), at: 0.95, dur: 1.1, vol: 0.035, filter: 2200, attack: 0.06 });
-    tone(c, { type: 'sine', freq: NOTE(48), at: 0.95, dur: 1.2, vol: 0.12, attack: 0.04 });
+    sampleOr('complete', synthFanfare);
   },
-  /** Error / blocked: alternating two-tone klaxon. */
+  /** Error / blocked: alarm sample (synth fallback: alternating two-tone klaxon). */
   klaxon() {
-    const c = ready('klaxon', 2500);
-    if (!c) return;
-    for (let i = 0; i < 4; i++) {
-      tone(c, { type: 'square', freq: 520, to: 640, at: i * 0.32, dur: 0.16, vol: 0.06, filter: 1500 });
-      tone(c, { type: 'square', freq: 400, at: i * 0.32 + 0.16, dur: 0.16, vol: 0.06, filter: 1300 });
-    }
-    tone(c, { type: 'sine', freq: 70, dur: 1.3, vol: 0.12, attack: 0.05 });
+    sampleOr('alert', synthKlaxon);
   },
   /** A failed order: short buzz. */
   error() {

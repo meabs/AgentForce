@@ -13,7 +13,7 @@ import type { ArchivedUnit } from './components/ArchiveTray';
 import { useMockExplorers, useRepoIntel, useTerritoryState } from './hooks/useTerritory';
 import { useRunHistory } from './hooks/useRunHistory';
 import { extractPaths, HOME_KEY, HOME_TERRITORY, resolvePath } from './lib/territory';
-import { say, sfx, spoken, toggleMuted, VOICE } from './lib/sfx';
+import { say, sfx, spoken, toggleAmbient, toggleMuted, VOICE } from './lib/sfx';
 import { callsignOf, hash } from './lib/callsign';
 import { NoticeBoard } from './components/NoticeBoard';
 import { CommandBar, type CommandId } from './components/CommandBar';
@@ -888,6 +888,7 @@ export default function App({ onDemo }: { onDemo?: () => void }) {
       const k = e.key;
       const lower = k.toLowerCase();
       if (lower === 'm') return toggleMuted();
+      if (lower === 'b') return toggleAmbient();
       if (lower === 't') {
         setWarRoomOpen(false);
         return setTerritoryOpen((o) => !o);

@@ -8,6 +8,8 @@
 
 <p align="center"><b>▶ <a href="media/demo.mp4">Watch the 60-second Mission Replay</a></b> (mp4, no audio). The GIF is a 16-second highlight reel; click it for the full take.</p>
 
+<p align="center"><b>🎮 PLAY THE DEMO: <a href="https://meabs.github.io/AgentForce/">meabs.github.io/AgentForce</a></b><br><sub>The Mission Replay in your browser, with sound. No install, no API key, no real agents. Click ENGAGE to start.</sub></p>
+
 > **Before you fly:** read the [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested). Some systems are combat-proven, some have only flown in the simulator, and we tell you which is which.
 
 ![Agent Fleet Command: tactical HUD with roster, isometric sector map, mission status and command bar](media/demo-screenshot.png)
@@ -41,8 +43,9 @@ real orders.
 | Fog of war map (Territory overlay, minimap FOG mode) | 🟢 Tested, working | Real-agent coverage is partial, see limits below |
 | War Room timeline | 🟢 Tested, working | |
 | Archive tray UI | 🟢 Tested, working | Board-only, saved in `localStorage` |
-| Sound effects and voice lines | 🟡 Code runs, never heard | The WebAudio and SpeechSynthesis code executes, but nobody has listened to it yet. Headless capture had no audio, and the demo video is silent |
+| Sound effects, HUM and voice lines | 🟡 Wired in, not yet heard by a human | The Pixabay clips (see `public/sfx/CREDITS.md`) and the HUM loop are wired in: they load with HTTP 200 and decode in headless Chrome (also under the `/AgentForce/` subpath), and the synth fallback kicks in when a clip is missing. Nobody has listened to them yet: headless capture had no audio, and the demo video is silent |
 | `npm run build` | 🟢 Passes | |
+| `npm run build:demo` + GitHub Pages workflow | 🟡 Verified locally, not yet deployed | Built with base `/AgentForce/`, served under that subpath and checked in headless Chrome on 2026-10-06: page loads, every asset and sound answers 200, no console errors, no `/api` calls, replay runs after ENGAGE. The workflow has not run on GitHub yet |
 | Live uplink: list real cloud agents (read-only) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: `GET /api/agents` answered 200 in about 0.5 s with real agents |
 | Live uplink: per-agent status and transcript | 🟢 Verified on the real Cursor API | Verified on 2026-10-06 with a throwaway test agent: status polling saw CREATING → RUNNING → FINISHED, and the transcript returned every user and assistant message |
 | SUMMON → LAUNCH CLOUD AGENT (launch) | 🟢 Verified on the real Cursor API | Verified on 2026-10-06: 201 in about 9 s, agent came back as CREATING with its id, URL and branch name. The bridge now sends `autoCreatePr: false`; the test agent pushed no branch and opened no PR |
@@ -101,29 +104,36 @@ A self-running 60 second cinematic: units are summoned, given orders, one gets b
 | Open **`/?demo=1`** | Straight into the replay. A title card counts down from 5, or click **ENGAGE** to start with sound |
 | **`/?demo=1&loop=1`** | Loops forever (kiosk, booth, background B-roll) |
 | **`/?demo=1&autostart=0`** | Waits on the title card until you click ENGAGE (best for screen recording) |
-| `Space` / `R` / `M` | Pause, restart, mute |
+| `Space` / `R` / `M` / `B` | Pause, restart, mute, bridge hum |
 
 The replay has camera pans and zooms, a virtual commander cursor that "clicks" the real command bar buttons, lower-third captions, a REC progress strip and letterboxed title and end cards. It is deterministic (seeded), so every take matches.
 
 **For YouTube:** open `/?demo=1&autostart=0` full screen at 1600×900 or larger, start OBS, click ENGAGE. The browser has to hear one click before it is allowed to play audio, which is exactly what ENGAGE is for. Audio heads-up: the sound has not been checked by ear yet (see [SYSTEMS CHECK](#-systems-check-what-works-vs-what-is-untested)), so do a test listen before you hit record.
 
-**Static hosting:** `npm run build:demo` writes a demo-only bundle to `dist-demo/` (always in replay mode, loops by default, no bridge, no live HUD, and the live status file is stripped). Drop that folder on any static host.
+**Static hosting:** `npm run build:demo` writes a demo-only bundle to `dist-demo/` (always in replay mode, loops by default, no bridge, no live HUD, and the live status file is stripped). It opens straight on the Mission Replay title card (no `?demo=1` needed) and waits for an **ENGAGE** click, so the browser can unlock audio on that click (`?autostart=1` brings the countdown back). It makes no `/api` calls. The bundle is built for the `/AgentForce/` subpath; set `DEMO_BASE=/` (or any other path) to host it somewhere else, for example `DEMO_BASE=/ npm run build:demo`. The build also writes `404.html` (a copy of `index.html`) and `.nojekyll`.
 
-### 🔊 SHIP'S AUDIO: SYNTHESIZED, NOT SAMPLED
+### 🚀 GITHUB PAGES: HOW THE DEMO IS DEPLOYED
 
-Every sound is generated live with WebAudio oscillators, filters and noise. There are no audio files in the repo. Honest caveat: the synth code runs, but so far it has only been exercised headlessly with no speakers attached, so nobody has actually heard these sounds yet. Treat the table below as the design spec until a human ear signs off.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) runs on every push to `main` (or by hand from the Actions tab): `npm ci`, `npm run build:demo`, then it uploads `dist-demo/` and deploys it to **https://meabs.github.io/AgentForce/**. No secrets are involved; the demo build never reads `CURSOR_API_KEY`.
+
+One-time setup: in the repo go to **Settings > Pages > Build and deployment > Source** and pick **GitHub Actions**. After that, every push to `main` redeploys the demo.
+
+### 🔊 SHIP'S AUDIO: SAMPLED CLIPS, SYNTH BACKUP
+
+The five key moments play short sampled clips from `public/sfx/` (all generic sci-fi sounds from [Pixabay](https://pixabay.com/sound-effects/), free under the Pixabay Content License; creators are credited in [`public/sfx/CREDITS.md`](public/sfx/CREDITS.md)). The clips are preloaded and decoded with WebAudio when the page opens. If a clip fails to load, that event falls back to the original synthesized sound, and the smaller events (hold, retreat, ticks, failed orders) are still synthesized live. Each clip is rate limited, and a repeat fades out the previous copy instead of stacking on top of it. Honest caveat: the clips were picked and trimmed by waveform and spectrum analysis, not by ear, so give them a test listen before recording.
 
 | Event | Sound | Voice line |
 |---|---|---|
-| Select a unit | two-pip blip | |
-| Orders, approve, resume | rising three-note chirp | "Orders received." / "Plan approved. Proceeding." |
-| Hold / retreat | descending pips / falling sweep | "Holding position." / "Falling back." |
-| Summon, launch | warp whoosh + sparkle | "Vector 2. Unit ready." |
-| A unit finishes | original brass-style fanfare | "Mission complete." |
-| A unit goes BLOCKED or errors | two-tone klaxon | "Alert. Unit requires attention." |
-| Failed order | low buzz | |
+| Select a unit | console blip (sample) | |
+| Orders, approve, resume | two-tone confirm chirp (sample) | "Orders received." / "Plan approved. Proceeding." |
+| Hold / retreat | descending pips / falling sweep (synth) | "Holding position." / "Falling back." |
+| Summon, launch | teleport whoosh (sample) | "Vector 2. Unit ready." |
+| A unit finishes | short success jingle (sample) | "Mission complete." |
+| A unit goes BLOCKED or errors | sci-fi alarm pulses (sample) | "Alert. Unit requires attention." |
+| Failed order | low buzz (synth) | |
+| Ambience (optional) | low bridge hum loop, **off by default**, toggle with **HUM** or `B` | |
 
-Voice lines use your browser's built-in SpeechSynthesis voice, pitched down for that ship's computer feel (a short radio squelch plays first). Sound is **on by default**; the **SOUND ON / OFF** toggle (or `M`) is remembered in `localStorage`. Fanfares and klaxons are wired to fire on real cloud agents' state changes (and on every beat of the replay); the simulated wingmates stay quiet so the board doesn't turn into a pinball machine.
+Voice lines use your browser's built-in SpeechSynthesis voice, pitched down for that ship's computer feel (a short radio squelch plays first). Sound is **on by default**; the **SOUND ON / OFF** toggle (or `M`) is remembered in `localStorage`, and muting also silences the hum. The **HUM** toggle (or `B`) is remembered too. Fanfares and klaxons are wired to fire on real cloud agents' state changes (and on every beat of the replay); the simulated wingmates stay quiet so the board doesn't turn into a pinball machine.
 
 ### 🌫 FOG OF WAR: THE REPO IS THE MAP
 
@@ -162,6 +172,7 @@ The old CPU/MEM panel is now a token burn meter: tokens per minute with a sparkl
 | `T` | Territory (fog of war) overlay |
 | `W` | War Room timeline |
 | `M` | Mute / unmute sound and voice |
+| `B` | Bridge hum ambience on / off (off by default) |
 | `Esc` | Close the overlay (or exit the replay) |
 
 ![Live HUD after the upgrade](media/morning-hud.png)
@@ -439,7 +450,7 @@ curl -s http://127.0.0.1:5173/api/agents | head -c 400
 |---|---|
 | `npm run dev` | Start the Vite dev server, including the `/api/cursor-live` endpoint and the `/api/agents` command uplink |
 | `npm run build` | Type-check (`tsc -b`) and production build into `dist/` |
-| `npm run build:demo` | Demo-only static bundle into `dist-demo/` (Mission Replay, no bridge needed) |
+| `npm run build:demo` | Demo-only static bundle into `dist-demo/` (Mission Replay, no bridge needed, base `/AgentForce/` for GitHub Pages; override with `DEMO_BASE`) |
 | `npm run preview` | Serve the production build (the endpoint is available here too) |
 | `npm run lint` | Lint with oxlint |
 | `npm run cursor:push` | Push a CURSOR-7 status update |
@@ -458,12 +469,12 @@ src/
                               Cockpit, Terminal, ArchiveTray, HudToolbar,
                               TerritoryGrid, TerritoryOverlay, WarRoom
   demo/DemoApp.tsx            the Mission Replay director (scripted 60s timeline)
-  lib/sfx.ts                  WebAudio synth + SpeechSynthesis voice lines + mute store
+  lib/sfx.ts                  sampled clips + WebAudio synth fallback, ambient hum, voice lines, mute store
   lib/territory.ts            repo → Hilbert-curve territory, path extraction, Sector 7G
   hooks/useTerritory.ts       touch state, simulated explorers, real repo intel (GET only)
   hooks/useRunHistory.ts      per-unit status timeline for the War Room
   hooks/useActivityTicker.ts  simulated fleet chatter
-  hooks/useCursorLive.ts      polls /cursor-live.json + state mapping
+  hooks/useCursorLive.ts      polls cursor-live.json (under the app base) + state mapping
   hooks/useTerminalLogs.ts    per-unit streaming terminal transcripts
   hooks/useCloudAgents.ts     command uplink polling + launch / follow-up / stop
   lib/uplink.ts               browser client for /api/agents
@@ -481,9 +492,12 @@ scripts/
   write-cursor-status.mjs     cursor:push / cursor:status
   auto-sync-cursor.mjs        cursor:watch / cursor:sync
   lib/cursor-live.mjs         shared normalise + atomic write
+  postbuild-demo.mjs          build:demo cleanup: strips cursor-live.json, adds 404.html + .nojekyll
 public/
   cursor-live.json            the live uplink file the HUD polls
+  sfx/                        Pixabay clips + ambient hum (credits in sfx/CREDITS.md)
   textures/terrain.svg        map backdrop
+.github/workflows/pages.yml   builds the demo and deploys it to GitHub Pages
 ```
 
 **Stack:** Vite · React 19 · TypeScript. Hand-rolled CSS, no UI kit.

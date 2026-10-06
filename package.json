@@ -12,7 +12,7 @@
     "cursor:push": "node scripts/write-cursor-status.mjs",
     "cursor:watch": "node scripts/auto-sync-cursor.mjs",
     "cursor:sync": "node scripts/auto-sync-cursor.mjs --once",
-    "build:demo": "tsc -b && VITE_STATIC_DEMO=1 vite build --outDir dist-demo && node -e \"require('fs').rmSync('dist-demo/cursor-live.json',{force:true})\""
+    "build:demo": "tsc -b && VITE_STATIC_DEMO=1 vite build --outDir dist-demo && node scripts/postbuild-demo.mjs dist-demo"
   },
   "dependencies": {
     "react": "^19.2.8",

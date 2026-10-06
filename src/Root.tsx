@@ -7,13 +7,23 @@ const DemoApp = lazy(() => import('./demo/DemoApp'));
 const STATIC_DEMO = import.meta.env.VITE_STATIC_DEMO === '1';
 
 const isDemoUrl = () => {
-  if (STATIC_DEMO) return true;
   const v = new URLSearchParams(window.location.search).get('demo');
   return v !== null && v !== '0' && v !== 'false';
 };
 
 /** Live HUD or the self-running Mission Replay (?demo=1). The replay never mounts the uplink hooks. */
 export default function Root() {
+  // Compile-time constant: the static build renders only the replay, so App (and its uplink hooks) is tree-shaken out.
+  if (STATIC_DEMO)
+    return (
+      <Suspense fallback={<div className="boot-splash">LOADING MISSION REPLAY…</div>}>
+        <DemoApp />
+      </Suspense>
+    );
+  return <HudOrReplay />;
+}
+
+function HudOrReplay() {
   const [demo, setDemo] = useState(isDemoUrl);
   useEffect(() => {
     const onPop = () => setDemo(isDemoUrl());
@@ -30,7 +40,7 @@ export default function Root() {
   if (demo)
     return (
       <Suspense fallback={<div className="boot-splash">LOADING MISSION REPLAY…</div>}>
-        <DemoApp onExit={STATIC_DEMO ? undefined : () => go(false)} />
+        <DemoApp onExit={() => go(false)} />
       </Suspense>
     );
   return <App onDemo={() => go(true)} />;
